@@ -15,7 +15,7 @@ ignore-patterns=
 
 # Python code to execute, usually for sys.path manipulation such as
 # pygtk.require().
-#init-hook=
+init-hook='import sys; sys.path.append("src")'
 
 # Use multiple processes to speed up Pylint.
 jobs=1
@@ -163,7 +163,7 @@ max-module-lines=1000
 # separator` is used to allow tabulation in dicts, etc.: {1  : 1,\n222: 2}.
 # `trailing-comma` allows a space between comma and closing bracket: (a, ).
 # `empty-line` allows space-only lines.
-no-space-check=trailing-comma,dict-separator
+no-space-check=trailing-comma,dict-separator,empty-line
 
 # Allow the body of a class to be on the same line as the declaration if body
 # contains single statement.

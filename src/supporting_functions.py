@@ -1,29 +1,31 @@
-import argparse
-import pandas as pd
 import pickle
+import pandas as pd
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import normalize
 
 DEFAULT_DIR = "output_data/"
 
+
 def read_pickle_file(file_name):
-    
+    # pylint: disable=invalid-name
     with open(file_name, "rb") as f:
         data = pickle.load(f)
     
     return data
 
 def write_pickle_file(data, file_name):
-    
+    # pylint: disable=invalid-name
     with open(file_name, "wb") as f:
         pickle.dump(data, f)
 
+    return data
 
-def create_dictionaries(raw_log_file, save=True, output_dir=DEFAULT_DIR, 
+
+def create_dictionaries(raw_log_file, save=True, output_dir=DEFAULT_DIR,
                         one_hot=False):
     
     with open(raw_log_file) as f:
-        logs = pd.read_csv(f, header=none, names=["user_id", "entity_id"])
+        logs = pd.read_csv(f, header=None, names=["user_id", "entity_id"])
 
     user_entity_dict = {}
     entity_user_dict = {}
@@ -59,11 +61,11 @@ def create_dictionaries(raw_log_file, save=True, output_dir=DEFAULT_DIR,
 
         del user_entity_dict
         del entity_user_dict
+        return True
 
-    else:
-        return (user_entity_dict, entity_user_dict)
+    return (user_entity_dict, entity_user_dict)
 
-def create_matrix(input_type="default", data_source=None, save=True, output_dir=DEFAULT_DIR, 
+def create_matrix(input_type="default", data_source=None, save=True, output_dir=DEFAULT_DIR,
                   sparse=True):
 
     input_types = ["default", "file", "dict"]
@@ -78,14 +80,14 @@ def create_matrix(input_type="default", data_source=None, save=True, output_dir=
     if input_type == "dict" and not isinstance(data_source, dict):
         raise ValueError("data_source must be the needed dictionary to create the user_entity matrix")
 
-    if input_type == "file" or input_type == "default":
+    if input_type in ["file", "default"]:
         file_name = data_source if input_type == "file" else DEFAULT_DIR + "user_entity_dict.pickle"
         data_source = read_pickle_file(file_name)
 
     user_dicts = list(data_source.values())
 
-    v = DictVectorizer(sparse=sparse)
-    user_entity_matrix = v.fit_transform(user_dicts)
+    vectorizer = DictVectorizer(sparse=sparse)
+    user_entity_matrix = vectorizer.fit_transform(user_dicts)
     user_entity_matrix = normalize(user_entity_matrix)
 
     if save:
@@ -93,6 +95,6 @@ def create_matrix(input_type="default", data_source=None, save=True, output_dir=
         write_pickle_file(user_entity_matrix, user_entity_matrix_file_name)
 
         del user_entity_matrix
+        return True
     
-    else:
-        return user_entity_matrix
+    return user_entity_matrix
