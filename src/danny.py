@@ -4,7 +4,7 @@ import dictionary_based_nn
 
 
 def main():
-    #pylint: disable=bad-continuation, too-many-branches, too-many-statements
+    #pylint: disable=too-many-branches, too-many-statements
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "all"], const="all",
                         help="what stage of the pipeline needs to be run")
@@ -17,6 +17,8 @@ def main():
                         calculated, if -1 then no cap is used")
     parser.add_argument("--processes", type="int", help="number of processes to use when finding nearest \
                         neighbors")
+    parser.add_argument("--one_hot", const=False, action="store_true", help="where all files should be \
+                        outputted to")
     parser.add_argument("--output_dir", help="where all files should be outputted to")
     
     args = parser.parse_args()
@@ -28,10 +30,12 @@ def main():
     if args.mode == "dictionary":
         if args.log_file:
             if args.output_dir:
-                supporting_functions.create_dictionaries(args.log_file, output_dir=args.output_dir)
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         one_hot=args.one_hot,
+                                                         output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
-                supporting_functions.create_dictionaries(args.log_file)
+                supporting_functions.create_dictionaries(args.log_file, one_hot=args.one_hot)
                 print("saved dictionaries to \"output_data\"")
         else:
             raise ValueError("need log file to convert into dictionaries")
@@ -41,8 +45,8 @@ def main():
             if args.output_dir:
                 supporting_functions.create_matrix(input_type="file",
                                                    data_source=args.user_entity_dict_file,
-                                                   output_dir=args.output_dir,
-                                                   sparse=sparse)
+                                                   sparse=sparse,
+                                                   output_dir=args.output_dir)
                 print("saved matrix to {}".format(args.output_dir))
             else:
                 supporting_functions.create_matrix(input_type="file",
@@ -52,7 +56,7 @@ def main():
 
         else:
             if args.output_dir:
-                supporting_functions.create_matrix(output_dir=args.output_dir, sparse=sparse)
+                supporting_functions.create_matrix(sparse=sparse, output_dir=args.output_dir)
                 print("saved matrix to {}".format(args.output_dir))
             else:
                 supporting_functions.create_matrix(sparse=sparse)
@@ -60,53 +64,68 @@ def main():
 
     if args.mode == "ann":
         if args.user_entity_dict_file and args.entity_user_dict_file and args.user_entity_matrix_file:
+            file_1 = args.user_entity_dict_file
+            file_2 = args.entity_user_dict_file
+            file_3 = args.user_entity_matrix_file
+
             if args.output_dir:
-                dictionary_based_nn.get_nearest_neighbors(input_type="files",
-                    file_names=[args.user_entity_dict_file, args.entity_user_dict_file, \
-                    args.user_entity_matrix_file],
-                    sparse=sparse, output_dir=args.output_dir, user_cap=user_cap, n_processes=processes)
+                dictionary_based_nn.get_nearest_neighbors_batch(input_type="files",
+                                                                file_names=[file_1, file_2, file_3],
+                                                                sparse=sparse,
+                                                                user_cap=user_cap,
+                                                                n_processes=processes,
+                                                                output_dir=args.output_dir)
                 print("saved similarity scores to {}".format(args.output_dir))
             else:
-                dictionary_based_nn.get_nearest_neighbors(input_type="files",
-                    file_names=[args.user_entity_dict_file, args.entity_user_dict_file, \
-                    args.user_entity_matrix_file],
-                    sparse=sparse, user_cap=user_cap, n_processes=processes)
+                dictionary_based_nn.get_nearest_neighbors_batch(input_type="files",
+                                                                file_names=[file_1, file_2, file_3],
+                                                                sparse=sparse,
+                                                                user_cap=user_cap,
+                                                                n_processes=processes)
                 print("saved similarity scores to \"output_data\"")
         else:
             if args.output_dir:
-                dictionary_based_nn.get_nearest_neighbors(sparse=sparse, output_dir=args.output_dir,
-                                                          user_cap=user_cap, n_processes=processes)
+                dictionary_based_nn.get_nearest_neighbors_batch(sparse=sparse,
+                                                                user_cap=user_cap,
+                                                                n_processes=processes,
+                                                                output_dir=args.output_dir)
                 print("saved similarity scores to {}".format(args.output_dir))
             else:
-                dictionary_based_nn.get_nearest_neighbors(sparse=sparse, user_cap=user_cap,
-                                                          n_processes=processes)
+                dictionary_based_nn.get_nearest_neighbors_batch(sparse=sparse,
+                                                                user_cap=user_cap,
+                                                                n_processes=processes)
                 print("saved similarity scores to \"output_data\"")
 
     if args.mode == "all":
         if args.log_file:
             if args.output_dir:
-                supporting_functions.create_dictionaries(args.log_file, output_dir=args.output_dir)
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         one_hot=args.one_hot,
+                                                         output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
-                supporting_functions.create_dictionaries(args.log_file)
+                supporting_functions.create_dictionaries(args.log_file, one_hot=args.one_hot)
                 print("saved dictionaries to \"output_data\"")
         else:
             raise ValueError("need log file to convert into dictionaries")
 
         if args.output_dir:
-            supporting_functions.create_matrix(output_dir=args.output_dir, sparse=sparse)
+            supporting_functions.create_matrix(sparse=sparse, output_dir=args.output_dir)
             print("saved matrix to {}".format(args.output_dir))
         else:
             supporting_functions.create_matrix(sparse=sparse)
             print("saved matrix to \"output_data\"")
 
         if args.output_dir:
-            dictionary_based_nn.get_nearest_neighbors(sparse=sparse, output_dir=args.output_dir,
-                                                      user_cap=user_cap, n_processes=processes)
+            dictionary_based_nn.get_nearest_neighbors_batch(sparse=sparse,
+                                                            user_cap=user_cap,
+                                                            n_processes=processes,
+                                                            output_dir=args.output_dir)
             print("saved similarity scores to {}".format(args.output_dir))
         else:
-            dictionary_based_nn.get_nearest_neighbors(sparse=sparse, user_cap=user_cap,
-                                                      n_processes=processes)
+            dictionary_based_nn.get_nearest_neighbors_batch(sparse=sparse,
+                                                            user_cap=user_cap,
+                                                            n_processes=processes)
             print("saved similarity scores to \"output_data\"")
 
 if __name__ == '__main__':

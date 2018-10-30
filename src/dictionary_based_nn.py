@@ -7,6 +7,8 @@ from supporting_functions import write_pickle_file
 
 DEFAULT_DIR = "output_data/"
 MAX_PROCESSES = cpu_count()
+DEFAULT_USER_CAP = 500
+SUM_SIGNIFICANCE = 10
 USER_ENTITY_DICT = None
 ENTITY_USER_DICT = None
 USER_ENTITY_MATRIX = None
@@ -18,13 +20,13 @@ def _update_score(perc):
         return 1
     return 0.5
 
-def _get_top_n_users(user_id_user_cap):
+def _get_top_n_users_batch(user_id_user_cap):
     user_id = user_id_user_cap[0]
     user_cap = user_id_user_cap[1]
 
     users_to_look_at = {}
     user_sum = sum(USER_ENTITY_DICT[user_id].values())
-    is_sum_sig = user_sum > 10
+    is_sum_sig = user_sum > SUM_SIGNIFICANCE
     for entity in USER_ENTITY_DICT[user_id]:
         users_associated_with_entity = ENTITY_USER_DICT[entity]
         if is_sum_sig:
@@ -48,7 +50,7 @@ def _get_top_n_users(user_id_user_cap):
 
     return top_n_keys
 
-def _get_relevant_users(user_id):
+def _get_relevant_users_batch(user_id):
     users_to_look_at = {}
     for entity in USER_ENTITY_DICT[user_id]:
         users_associated_with_entity = ENTITY_USER_DICT[entity]
@@ -57,7 +59,7 @@ def _get_relevant_users(user_id):
 
     return list(users_to_look_at.keys())
 
-def _get_dense_similarities(user_tuple):
+def _get_dense_similarities_batch(user_tuple):
     user_id = user_tuple[0]
     users_to_compare_to = user_tuple[1]
     row = USER_ENTITY_MATRIX[user_id]
@@ -70,7 +72,7 @@ def _get_dense_similarities(user_tuple):
 
     return results_dict
 
-def _get_sparse_similarities(user_tuple):
+def _get_sparse_similarities_batch(user_tuple):
     user_id = user_tuple[0]
     users_to_compare_to = user_tuple[1]
     row = USER_ENTITY_MATRIX[user_id].toarray()[0]
@@ -84,8 +86,8 @@ def _get_sparse_similarities(user_tuple):
     return results_dict
 
 
-def get_nearest_neighbors(input_type="default", file_names=None, sparse=True, save=True,
-                          output_dir=DEFAULT_DIR, user_cap=500, n_processes=None):
+def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=True, user_cap=DEFAULT_USER_CAP,
+                                n_processes=None, save=True, output_dir=DEFAULT_DIR):
     # pylint: disable=unused-variable, global-statement, too-many-arguments, too-many-locals
     input_types = ["default", "files"]
     if input_type not in input_types:
@@ -126,8 +128,8 @@ def get_nearest_neighbors(input_type="default", file_names=None, sparse=True, sa
 
     start_time = time.time()
 
-    users_to_extract = pool.map(_get_top_n_users, user_indicies) if user_cap \
-                       else pool.map(_get_relevant_users, user_indicies)
+    users_to_extract = pool.map(_get_top_n_users_batch, user_indicies) if user_cap \
+                       else pool.map(_get_relevant_users_batch, user_indicies)
 
     print("Pruning took {0:.3f} seconds".format(time.time() - start_time))
 
@@ -137,8 +139,8 @@ def get_nearest_neighbors(input_type="default", file_names=None, sparse=True, sa
 
     start_time = time.time()
 
-    dictionary_results = pool.map(_get_sparse_similarities, user_tuples) if sparse \
-                         else pool.map(_get_dense_similarities, user_tuples)
+    dictionary_results = pool.map(_get_sparse_similarities_batch, user_tuples) if sparse \
+                         else pool.map(_get_dense_similarities_batch, user_tuples)
 
     print("Matrix Multiplications took {0:.3f} seconds".format(time.time() - start_time))
 
@@ -158,3 +160,77 @@ def get_nearest_neighbors(input_type="default", file_names=None, sparse=True, sa
         return True
     
     return similarity_scores
+
+
+def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
+                             n_neighbors=20, sparse=True):
+    # pylint: disable=too-many-arguments, too-many-locals
+    if user_id not in user_entity_matrix:
+        raise ValueError("The user_id passed in is not found in the user_entity_dict")
+
+    relevant_users = {}
+    for entity in user_entity_dict[user_id]:
+        for user in entity_user_dict[entity]:
+            relevant_users[user] = 1
+
+    users_to_compare_to = list(relevant_users.keys())
+    row = user_entity_matrix[user_id]
+
+    if sparse:
+        results = user_entity_matrix[users_to_compare_to, :].dot(row)
+    else:
+        results = dot(user_entity_matrix[users_to_compare_to, :], row)
+
+    results_dict = {}
+    for i, dot_product in enumerate(results):
+        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+
+    nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
+
+    return nearest_neighbors
+
+def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
+                              n_neighbors=20, sparse=True):
+    # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
+    if user_id not in user_entity_matrix:
+        raise ValueError("The user_id passed in is not found in the user_entity_dict")
+
+    relevant_users = {}
+    user_sum = sum(user_entity_dict[user_id].values())
+    is_sum_sig = user_sum > SUM_SIGNIFICANCE
+    for entity in user_entity_dict[user_id]:
+        if is_sum_sig:
+            user_count = user_entity_dict[user_id][entity]
+            perc = user_count / user_sum
+        for user in entity_user_dict[entity]:
+            if user in relevant_users:
+                if is_sum_sig:
+                    relevant_users[user] += _update_score(perc)
+                else:
+                    relevant_users[user] += 1
+            else:
+                if is_sum_sig:
+                    relevant_users[user] = _update_score(perc)
+                else:
+                    relevant_users[user] = 1
+
+    if len(relevant_users) > n_neighbors * 2:
+        most_likely_users = sorted(relevant_users.items(), key=itemgetter(1), reverse=True)[:n_neighbors*2]
+        users_to_compare_to = [tup[0] for tup in most_likely_users]
+    else:
+        users_to_compare_to = list(relevant_users.keys())
+
+    row = user_entity_matrix[user_id]
+
+    if sparse:
+        results = user_entity_matrix[users_to_compare_to, :].dot(row)
+    else:
+        results = dot(user_entity_matrix[users_to_compare_to, :], row)
+
+    results_dict = {}
+    for i, dot_product in enumerate(results):
+        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+
+    nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
+
+    return nearest_neighbors

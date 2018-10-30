@@ -5,7 +5,6 @@ from sklearn.preprocessing import normalize
 
 DEFAULT_DIR = "output_data/"
 
-
 def read_pickle_file(file_name):
     # pylint: disable=invalid-name
     with open(file_name, "rb") as f:
@@ -20,10 +19,8 @@ def write_pickle_file(data, file_name):
 
     return data
 
-
-def create_dictionaries(raw_log_file, save=True, output_dir=DEFAULT_DIR,
-                        one_hot=False):
-    
+def create_dictionaries(raw_log_file, one_hot=False, save=True, output_dir=DEFAULT_DIR):
+    # pylint: disable=invalid-name, unused-variable
     with open(raw_log_file) as f:
         logs = pd.read_csv(f, header=None, names=["user_id", "entity_id"])
 
@@ -65,8 +62,7 @@ def create_dictionaries(raw_log_file, save=True, output_dir=DEFAULT_DIR,
 
     return (user_entity_dict, entity_user_dict)
 
-def create_matrix(input_type="default", data_source=None, save=True, output_dir=DEFAULT_DIR,
-                  sparse=True):
+def create_matrix(input_type="default", data_source=None, sparse=True, save=True, output_dir=DEFAULT_DIR):
 
     input_types = ["default", "file", "dict"]
     
