@@ -1,4 +1,5 @@
 import argparse
+import logging
 import supporting_functions
 import dictionary_based_nn
 
@@ -24,12 +25,17 @@ def main():
     parser.add_argument("--one_hot", action="store_true", help="where all files should be \
                         outputted to")
     parser.add_argument("--output_dir", nargs='?', help="where all files should be outputted to")
+    parser.add_argument("--verbose", action="store_true", help="print out timings for each step of the \
+                        process")
     
     args = parser.parse_args()
 
     user_cap = args.user_cap if args.user_cap else 500
     sparse = False if args.dense else True
     processes = args.processes if args.processes else None
+    
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
 
     if args.mode == "dictionary":
         if args.log_file and args.log_size:

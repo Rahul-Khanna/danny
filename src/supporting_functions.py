@@ -1,6 +1,7 @@
 import logging
 from multiprocessing import Pool, cpu_count
 import pickle
+import time
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import normalize
 
@@ -132,7 +133,7 @@ def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, sav
     n_processes = MAX_PROCESSES - 2 if n_processes is None else n_processes
     logs_per_chunk = int(size / n_processes)
     chunked_logs = []
-    
+    start_time = time.time()
     with open(raw_log_file) as logs:
         i = 0
         chunk = []
@@ -147,8 +148,8 @@ def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, sav
 
         chunked_logs.append(chunk)
 
-    logging.info("read in logs")
-
+    logging.info("read in logs in %s seconds", time.time() - start_time)
+    start_time = time.time()
     pool = Pool(processes=n_processes)
 
     mini_dicionaries = pool.map(_create_one_hot_mini_dictionaries, chunked_logs) if one_hot \
@@ -157,14 +158,15 @@ def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, sav
     pool.close()
     pool.join()
 
-    logging.info("mini dictionaries created")
-
+    logging.info("mini dictionaries created in %s seconds", time.time() - start_time)
+    start_time = time.time()
+    
     if one_hot:
         combined_dicts = _combine_one_hot_mini_dictionaries(mini_dicionaries)
     else:
         combined_dicts = _combine_count_mini_dictionaries(mini_dicionaries)
 
-    logging.info("mini dictionaries combined")
+    logging.info("mini dictionaries combined in %s seconds", time.time() - start_time)
 
     if save:
         user_entity_dict_file_name = output_dir + "user_entity_dict.pickle"
@@ -181,7 +183,7 @@ def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, sav
 def create_matrix(input_type="default", data_source=None, sparse=True, save=True, output_dir=DEFAULT_DIR):
 
     input_types = ["default", "file", "dict"]
-    
+    start_time = time.time()
     if input_type not in input_types:
         raise ValueError("input_type must be one of \"default\", \"file\" or \"dict\"")
 
@@ -195,14 +197,18 @@ def create_matrix(input_type="default", data_source=None, sparse=True, save=True
     if input_type in ["file", "default"]:
         file_name = data_source if input_type == "file" else DEFAULT_DIR + "user_entity_dict.pickle"
         data_source = read_pickle_file(file_name)
-        logging.info("read in needed pickle files")
+        logging.info("read in needed pickle files in %s seconds", time.time() - start_time)
 
+    start_time = time.time()
     user_dicts = list(data_source.values())
 
     vectorizer = DictVectorizer(sparse=sparse)
     user_entity_matrix = vectorizer.fit_transform(user_dicts)
-    logging.info("matrix is created, now normalizing the rows")
+    logging.info("matrix is created in %s seconds", time.time() - start_time)
+    start_time = time.time()
+
     user_entity_matrix = normalize(user_entity_matrix)
+    logging.info("matrix is row normalized in %s seconds", time.time() - start_time)
 
     if save:
         user_entity_matrix_file_name = output_dir + "user_entity_matrix.pickle"
