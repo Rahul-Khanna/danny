@@ -1,9 +1,11 @@
+import logging
+from multiprocessing import Pool, cpu_count
 import pickle
-import pandas as pd
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import normalize
 
 DEFAULT_DIR = "output_data/"
+MAX_PROCESSES = cpu_count()
 
 def read_pickle_file(file_name):
     # pylint: disable=invalid-name
@@ -19,48 +21,162 @@ def write_pickle_file(data, file_name):
 
     return data
 
-def create_dictionaries(raw_log_file, one_hot=False, save=True, output_dir=DEFAULT_DIR):
-    # pylint: disable=invalid-name, unused-variable
-    with open(raw_log_file) as f:
-        logs = pd.read_csv(f, header=None, names=["user_id", "entity_id"])
-
+def _create_count_mini_dictionaries(logs):
     user_entity_dict = {}
     entity_user_dict = {}
 
-    for i, row in logs.iterrows():
-        user_id = row["user_id"]
-        entity_id = row["entity_id"]
+    for line in logs:
+        parts = line.split(",")
+        user_id = parts[0]
+        entity_id = parts[1]
 
-        if user_id in user_entity_dict:
-            if entity_id in user_entity_dict[user_id] and not one_hot:
-                user_entity_dict[user_id][entity_id] += 1
-            else:
-                user_entity_dict[user_id][entity_id] = 1
-        else:
+        if user_id not in user_entity_dict:
             user_entity_dict[user_id] = {}
+
+        if entity_id in user_entity_dict[user_id]:
+            user_entity_dict[user_id][entity_id] += 1
+        else:
             user_entity_dict[user_id][entity_id] = 1
 
-        if entity_id in entity_user_dict:
-            if user_id in entity_user_dict[entity_id] and not one_hot:
-                entity_user_dict[entity_id][user_id] += 1
-            else:
-                entity_user_dict[entity_id][user_id] = 1
-        else:
+        if entity_id not in entity_user_dict:
             entity_user_dict[entity_id] = {}
+
+        if user_id in entity_user_dict[entity_id]:
+            entity_user_dict[entity_id][user_id] += 1
+        else:
             entity_user_dict[entity_id][user_id] = 1
+
+    return (user_entity_dict, entity_user_dict)
+
+def _create_one_hot_mini_dictionaries(logs):
+    user_entity_dict = {}
+    entity_user_dict = {}
+
+    for line in logs:
+        parts = line.split(",")
+        user_id = parts[0]
+        entity_id = parts[1]
+
+        if user_id not in user_entity_dict:
+            user_entity_dict[user_id] = {}
+
+        if entity_id not in user_entity_dict[user_id]:
+            user_entity_dict[user_id][entity_id] = 1
+
+        if entity_id not in entity_user_dict:
+            entity_user_dict[entity_id] = {}
+
+        if user_id not in entity_user_dict[entity_id]:
+            entity_user_dict[entity_id][user_id] = 1
+
+    return (user_entity_dict, entity_user_dict)
+
+def _combine_count_mini_dictionaries(mini_dicionaries):
+    user_entity_dict = {}
+    entity_user_dict = {}
+
+    for pair in mini_dicionaries:
+        user_mini_dict = pair[0]
+        entity_mini_dict = pair[1]
+        
+        for user in user_mini_dict:
+            if user not in user_entity_dict:
+                user_entity_dict[user] = {}
+
+            for entity in user_mini_dict[user]:
+                if entity in user_entity_dict[user]:
+                    user_entity_dict[user][entity] += user_mini_dict[user][entity]
+                else:
+                    user_entity_dict[user][entity] = user_mini_dict[user][entity]
+
+        for entity in entity_mini_dict:
+            if entity not in entity_user_dict:
+                entity_user_dict[entity] = {}
+
+            for user in entity_mini_dict[entity]:
+                if user in entity_user_dict[entity]:
+                    entity_user_dict[entity][user] += entity_mini_dict[entity][user]
+                else:
+                    entity_user_dict[entity][user] = entity_mini_dict[entity][user]
+
+    return(user_entity_dict, entity_user_dict)
+
+def _combine_one_hot_mini_dictionaries(mini_dicionaries):
+    user_entity_dict = {}
+    entity_user_dict = {}
+    for pair in mini_dicionaries:
+        user_mini_dict = pair[0]
+        entity_mini_dict = pair[1]
+        
+        for user in user_mini_dict:
+            if user not in user_entity_dict:
+                user_entity_dict[user] = {}
+
+            for entity in user_mini_dict[user]:
+                if entity not in user_entity_dict[user]:
+                    user_entity_dict[user][entity] = 1
+
+        for entity in entity_mini_dict:
+            if entity not in entity_user_dict:
+                entity_user_dict[entity] = {}
+            
+            for user in entity_mini_dict[entity]:
+                if user not in entity_user_dict[entity]:
+                    entity_user_dict[entity][user] = 1
+
+    return (user_entity_dict, entity_user_dict)
+
+def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, save=True,
+                        output_dir=DEFAULT_DIR):
+    # pylint: disable=too-many-arguments, too-many-locals
+    n_processes = MAX_PROCESSES - 2 if n_processes is None else n_processes
+    logs_per_chunk = int(size / n_processes)
+    chunked_logs = []
+    
+    with open(raw_log_file) as logs:
+        i = 0
+        chunk = []
+        for line in logs:
+            if i < logs_per_chunk:
+                chunk.append(line)
+                i += 1
+            else:
+                chunked_logs.append(chunk)
+                chunk = [line]
+                i = 1
+
+        chunked_logs.append(chunk)
+
+    logging.info("read in logs")
+
+    pool = Pool(processes=n_processes)
+
+    mini_dicionaries = pool.map(_create_one_hot_mini_dictionaries, chunked_logs) if one_hot \
+                       else pool.map(_create_count_mini_dictionaries, chunked_logs)
+
+    pool.close()
+    pool.join()
+
+    logging.info("mini dictionaries created")
+
+    if one_hot:
+        combined_dicts = _combine_one_hot_mini_dictionaries(mini_dicionaries)
+    else:
+        combined_dicts = _combine_count_mini_dictionaries(mini_dicionaries)
+
+    logging.info("mini dictionaries combined")
 
     if save:
         user_entity_dict_file_name = output_dir + "user_entity_dict.pickle"
         entity_user_dict_file_name = output_dir + "entity_user_dict.pickle"
 
-        write_pickle_file(user_entity_dict, user_entity_dict_file_name)
-        write_pickle_file(entity_user_dict, entity_user_dict_file_name)
+        write_pickle_file(combined_dicts[0], user_entity_dict_file_name)
+        write_pickle_file(combined_dicts[1], entity_user_dict_file_name)
 
-        del user_entity_dict
-        del entity_user_dict
+        del combined_dicts
         return True
 
-    return (user_entity_dict, entity_user_dict)
+    return combined_dicts
 
 def create_matrix(input_type="default", data_source=None, sparse=True, save=True, output_dir=DEFAULT_DIR):
 
@@ -79,11 +195,13 @@ def create_matrix(input_type="default", data_source=None, sparse=True, save=True
     if input_type in ["file", "default"]:
         file_name = data_source if input_type == "file" else DEFAULT_DIR + "user_entity_dict.pickle"
         data_source = read_pickle_file(file_name)
+        logging.info("read in needed pickle files")
 
     user_dicts = list(data_source.values())
 
     vectorizer = DictVectorizer(sparse=sparse)
     user_entity_matrix = vectorizer.fit_transform(user_dicts)
+    logging.info("matrix is created, now normalizing the rows")
     user_entity_matrix = normalize(user_entity_matrix)
 
     if save:

@@ -1,3 +1,4 @@
+import logging
 from multiprocessing import Pool, cpu_count
 from operator import itemgetter
 import time
@@ -131,7 +132,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     users_to_extract = pool.map(_get_top_n_users_batch, user_indicies) if user_cap \
                        else pool.map(_get_relevant_users_batch, user_indicies)
 
-    print("Pruning took {0:.3f} seconds".format(time.time() - start_time))
+    logging.info("Pruning took {0:.3f} seconds".format(time.time() - start_time))
 
     user_tuples = []
     for i, users in enumerate(users_to_extract):
@@ -142,7 +143,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     dictionary_results = pool.map(_get_sparse_similarities_batch, user_tuples) if sparse \
                          else pool.map(_get_dense_similarities_batch, user_tuples)
 
-    print("Matrix Multiplications took {0:.3f} seconds".format(time.time() - start_time))
+    logging.info("Matrix Multiplications took {0:.3f} seconds".format(time.time() - start_time))
 
     pool.close()
     pool.join()

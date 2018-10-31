@@ -6,20 +6,24 @@ import dictionary_based_nn
 def main():
     #pylint: disable=too-many-branches, too-many-statements
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "all"], const="all",
+    parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "all"], const="all", nargs='?',
                         help="what stage of the pipeline needs to be run")
-    parser.add_argument("--log_file", help="csv containing logs to be processed")
-    parser.add_argument("--user_entity_dict_file", help="pickle file holding user_entity_dictionary")
-    parser.add_argument("--entity_user_dict_file", help="pickle file holding entity_user_dictionary")
-    parser.add_argument("--user_entity_matrix_file", help="pickle file holding entity_user_matrix")
-    parser.add_argument("--dense", action="store_true", help="the user_entity matrix will be / is dense")
-    parser.add_argument("--user_cap", type="int", help="cap on how many user similarity scores should be \
-                        calculated, if -1 then no cap is used")
-    parser.add_argument("--processes", type="int", help="number of processes to use when finding nearest \
-                        neighbors")
-    parser.add_argument("--one_hot", const=False, action="store_true", help="where all files should be \
+    parser.add_argument("--log_file", nargs='?', help="csv containing logs to be processed")
+    parser.add_argument("--log_size", type=int, nargs='?', help="number of logs in log file")
+    parser.add_argument("--user_entity_dict_file", nargs='?', help="pickle file holding \
+                        user_entity_dictionary")
+    parser.add_argument("--entity_user_dict_file", nargs='?', help="pickle file holding \
+                        entity_user_dictionary")
+    parser.add_argument("--user_entity_matrix_file", nargs='?', help="pickle file holding \
+                         entity_user_matrix")
+    parser.add_argument("--dense", action="store_true", help="the user_entity matrix will be dense or not")
+    parser.add_argument("--user_cap", type=int, nargs='?', help="cap on how many user similarity scores \
+                        should be calculated, if -1 then no cap is used")
+    parser.add_argument("--processes", type=int, nargs='?', help="number of processes to use when finding \
+                        nearest neighbors")
+    parser.add_argument("--one_hot", action="store_true", help="where all files should be \
                         outputted to")
-    parser.add_argument("--output_dir", help="where all files should be outputted to")
+    parser.add_argument("--output_dir", nargs='?', help="where all files should be outputted to")
     
     args = parser.parse_args()
 
@@ -28,17 +32,22 @@ def main():
     processes = args.processes if args.processes else None
 
     if args.mode == "dictionary":
-        if args.log_file:
+        if args.log_file and args.log_size:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
+                                                         args.log_size,
                                                          one_hot=args.one_hot,
+                                                         n_processes=processes,
                                                          output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
-                supporting_functions.create_dictionaries(args.log_file, one_hot=args.one_hot)
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         args.log_size,
+                                                         one_hot=args.one_hot,
+                                                         n_processes=processes)
                 print("saved dictionaries to \"output_data\"")
         else:
-            raise ValueError("need log file to convert into dictionaries")
+            raise ValueError("need log file to convert into dictionaries, as well as length of file")
 
     if args.mode == "matrix":
         if args.user_entity_dict_file:
@@ -97,17 +106,22 @@ def main():
                 print("saved similarity scores to \"output_data\"")
 
     if args.mode == "all":
-        if args.log_file:
+        if args.log_file and args.log_size:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
+                                                         args.log_size,
                                                          one_hot=args.one_hot,
+                                                         n_processes=processes,
                                                          output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
-                supporting_functions.create_dictionaries(args.log_file, one_hot=args.one_hot)
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         args.log_size,
+                                                         one_hot=args.one_hot,
+                                                         n_processes=processes)
                 print("saved dictionaries to \"output_data\"")
         else:
-            raise ValueError("need log file to convert into dictionaries")
+            raise ValueError("need log file to convert into dictionaries, as well as length of file")
 
         if args.output_dir:
             supporting_functions.create_matrix(sparse=sparse, output_dir=args.output_dir)
