@@ -1,5 +1,6 @@
 import logging
 from multiprocessing import Pool, cpu_count
+from operator import itemgetter
 import pickle
 import time
 from sklearn.feature_extraction import DictVectorizer
@@ -27,9 +28,9 @@ def _create_count_mini_dictionaries(logs):
     entity_user_dict = {}
 
     for line in logs:
-        parts = line.split(",")
-        user_id = parts[0]
-        entity_id = parts[1]
+        parts = line.rstrip().split(",")
+        user_id = int(parts[0])
+        entity_id = int(parts[1])
 
         if user_id not in user_entity_dict:
             user_entity_dict[user_id] = {}
@@ -54,9 +55,9 @@ def _create_one_hot_mini_dictionaries(logs):
     entity_user_dict = {}
 
     for line in logs:
-        parts = line.split(",")
-        user_id = parts[0]
-        entity_id = parts[1]
+        parts = line.rstrip().split(",")
+        user_id = int(parts[0])
+        entity_id = int(parts[1])
 
         if user_id not in user_entity_dict:
             user_entity_dict[user_id] = {}
@@ -200,7 +201,11 @@ def create_matrix(input_type="default", data_source=None, sparse=True, save=True
         logging.info("read in needed pickle files in %s seconds", time.time() - start_time)
 
     start_time = time.time()
-    user_dicts = list(data_source.values())
+    user_dicts = sorted(data_source.items(), key=itemgetter(0))
+    user_dicts = [tup[1] for tup in user_dicts]
+    
+    logging.info("prepped user info for matrix creation %s seconds", time.time() - start_time)
+    start_time = time.time()
 
     vectorizer = DictVectorizer(sparse=sparse)
     user_entity_matrix = vectorizer.fit_transform(user_dicts)
