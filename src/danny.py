@@ -10,7 +10,6 @@ def main():
     parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "all"], const="all", nargs='?',
                         help="what stage of the pipeline needs to be run")
     parser.add_argument("--log_file", nargs='?', help="csv containing logs to be processed")
-    parser.add_argument("--log_size", type=int, nargs='?', help="number of logs in log file")
     parser.add_argument("--user_entity_dict_file", nargs='?', help="pickle file holding \
                         user_entity_dictionary")
     parser.add_argument("--entity_user_dict_file", nargs='?', help="pickle file holding \
@@ -38,22 +37,20 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     if args.mode == "dictionary":
-        if args.log_file and args.log_size:
+        if args.log_file:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
-                                                         args.log_size,
                                                          one_hot=args.one_hot,
                                                          n_processes=processes,
                                                          output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
                 supporting_functions.create_dictionaries(args.log_file,
-                                                         args.log_size,
                                                          one_hot=args.one_hot,
                                                          n_processes=processes)
                 print("saved dictionaries to \"output_data\"")
         else:
-            raise ValueError("need log file to convert into dictionaries, as well as length of file")
+            raise ValueError("need log file to convert into dictionaries")
 
     if args.mode == "matrix":
         if args.user_entity_dict_file:
@@ -115,19 +112,17 @@ def main():
         if args.log_file and args.log_size:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
-                                                         args.log_size,
                                                          one_hot=args.one_hot,
                                                          n_processes=processes,
                                                          output_dir=args.output_dir)
                 print("saved dictionaries to {}".format(args.output_dir))
             else:
                 supporting_functions.create_dictionaries(args.log_file,
-                                                         args.log_size,
                                                          one_hot=args.one_hot,
                                                          n_processes=processes)
                 print("saved dictionaries to \"output_data\"")
         else:
-            raise ValueError("need log file to convert into dictionaries, as well as length of file")
+            raise ValueError("need log file to convert into dictionaries")
 
         if args.output_dir:
             supporting_functions.create_matrix(sparse=sparse, output_dir=args.output_dir)

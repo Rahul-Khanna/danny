@@ -8,6 +8,7 @@ from sklearn.preprocessing import normalize
 
 DEFAULT_DIR = "output_data/"
 MAX_PROCESSES = cpu_count()
+MAX_LOG_CHUNK = 500000
 
 def read_pickle_file(file_name):
     # pylint: disable=invalid-name
@@ -128,18 +129,17 @@ def _combine_one_hot_mini_dictionaries(mini_dicionaries):
 
     return (user_entity_dict, entity_user_dict)
 
-def create_dictionaries(raw_log_file, size, one_hot=False, n_processes=None, save=True,
+def create_dictionaries(raw_log_file, one_hot=False, n_processes=None, save=True,
                         output_dir=DEFAULT_DIR):
     # pylint: disable=too-many-arguments, too-many-locals
     n_processes = MAX_PROCESSES - 2 if n_processes is None else n_processes
-    logs_per_chunk = int(size / n_processes)
     chunked_logs = []
     start_time = time.time()
     with open(raw_log_file) as logs:
         i = 0
         chunk = []
         for line in logs:
-            if i < logs_per_chunk:
+            if i < MAX_LOG_CHUNK:
                 chunk.append(line)
                 i += 1
             else:
