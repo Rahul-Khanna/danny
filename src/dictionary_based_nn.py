@@ -172,7 +172,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
                              n_neighbors=20, sparse=True):
     # pylint: disable=too-many-arguments, too-many-locals
-    if user_id not in user_entity_matrix:
+    if user_id not in user_entity_dict:
         raise ValueError("The user_id passed in is not found in the user_entity_dict")
 
     start_time = time.time()
@@ -207,7 +207,7 @@ def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_e
 def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
                               n_neighbors=20, sparse=True):
     # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
-    if user_id not in user_entity_matrix:
+    if user_id not in user_entity_dict:
         raise ValueError("The user_id passed in is not found in the user_entity_dict")
 
     start_time = time.time()

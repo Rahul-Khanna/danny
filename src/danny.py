@@ -7,8 +7,8 @@ import dictionary_based_nn
 def main():
     #pylint: disable=too-many-branches, too-many-statements
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "all"], const="all", nargs='?',
-                        help="what stage of the pipeline needs to be run")
+    parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "index", "batch"], const="index",
+                        nargs='?', help="what operations should danny perform")
     parser.add_argument("--log_file", nargs='?', help="csv containing logs to be processed")
     parser.add_argument("--user_entity_dict_file", nargs='?', help="pickle file holding \
                         user_entity_dictionary")
@@ -107,6 +107,30 @@ def main():
                                                                 user_cap=user_cap,
                                                                 n_processes=processes)
                 print("saved similarity scores to \"output_data\"")
+
+
+    if args.mode == "index":
+        if args.log_file and args.log_size:
+            if args.output_dir:
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         one_hot=args.one_hot,
+                                                         n_processes=processes,
+                                                         output_dir=args.output_dir)
+                print("saved dictionaries to {}".format(args.output_dir))
+            else:
+                supporting_functions.create_dictionaries(args.log_file,
+                                                         one_hot=args.one_hot,
+                                                         n_processes=processes)
+                print("saved dictionaries to \"output_data\"")
+        else:
+            raise ValueError("need log file to convert into dictionaries")
+
+        if args.output_dir:
+            supporting_functions.create_matrix(sparse=sparse, output_dir=args.output_dir)
+            print("saved matrix to {}".format(args.output_dir))
+        else:
+            supporting_functions.create_matrix(sparse=sparse)
+            print("saved matrix to \"output_data\"")
 
     if args.mode == "all":
         if args.log_file and args.log_size:
