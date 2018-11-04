@@ -22,7 +22,7 @@ def write_pickle_file(data, file_name):
     with open(file_name, "wb") as f:
         pickle.dump(data, f)
 
-    return data
+    return True
 
 def _create_count_mini_dictionaries(logs):
     user_entity_dict = {}

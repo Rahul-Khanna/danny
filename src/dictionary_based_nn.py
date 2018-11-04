@@ -21,17 +21,15 @@ def _update_score(perc):
         return 1
     return 0.5
 
-def _get_top_n_users_batch(user_id_user_cap):
-    user_id = user_id_user_cap[0]
-    user_cap = user_id_user_cap[1]
-
+def _approx_prune_space(user_id, user_entity_dict, entity_user_dict):
     users_to_look_at = {}
-    user_sum = sum(USER_ENTITY_DICT[user_id].values())
+    user_sum = sum(user_entity_dict[user_id].values())
     is_sum_sig = user_sum > SUM_SIGNIFICANCE
-    for entity in USER_ENTITY_DICT[user_id]:
-        users_associated_with_entity = ENTITY_USER_DICT[entity]
+    
+    for entity in entity_user_dict[user_id]:
+        users_associated_with_entity = entity_user_dict[entity]
         if is_sum_sig:
-            user_count = USER_ENTITY_DICT[user_id][entity]
+            user_count = user_entity_dict[user_id][entity]
             perc = user_count / user_sum
         for key in users_associated_with_entity:
             if key in users_to_look_at:
@@ -45,6 +43,41 @@ def _get_top_n_users_batch(user_id_user_cap):
                 else:
                     users_to_look_at[key] = 1
 
+    return users_to_look_at
+
+def _strict_prune_space(user_id, user_entity_dict, entity_user_dict):
+    users_to_look_at = {}
+    
+    for entity in user_entity_dict[user_id]:
+        users_associated_with_entity = entity_user_dict[entity]
+        for key in users_associated_with_entity:
+            users_to_look_at[key] = 1
+    
+    return users_to_look_at
+
+def _find_similarities(user_id, matrix, users_to_compare_to, sparse):
+    if sparse:
+        row = matrix[user_id].toarray()[0]
+        results = matrix[users_to_compare_to, :].dot(row)
+    else:
+        row = matrix[user_id]
+        results = dot(matrix[users_to_compare_to, :], row)
+
+    return results
+
+def _format_similarities(users_to_comapre_to, similarities):
+    results_dict = {}
+    for i, dot_product in enumerate(similarities):
+        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+
+    return results_dict
+
+def _get_top_n_users_batch(user_id_user_cap):
+    user_id = user_id_user_cap[0]
+    user_cap = user_id_user_cap[1]
+
+    users_to_look_at = _approx_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
+
     top_n = sorted(users_to_look_at.items(), key=itemgetter(1), reverse=True)[:user_cap]
 
     top_n_keys = [tup[0] for tup in top_n]
@@ -52,40 +85,25 @@ def _get_top_n_users_batch(user_id_user_cap):
     return top_n_keys
 
 def _get_relevant_users_batch(user_id):
-    users_to_look_at = {}
-    for entity in USER_ENTITY_DICT[user_id]:
-        users_associated_with_entity = ENTITY_USER_DICT[entity]
-        for key in users_associated_with_entity:
-            users_to_look_at[key] = 1
+    users_to_look_at = _strict_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
 
     return list(users_to_look_at.keys())
 
 def _get_dense_similarities_batch(user_tuple):
     user_id = user_tuple[0]
     users_to_compare_to = user_tuple[1]
-    row = USER_ENTITY_MATRIX[user_id]
 
-    results = dot(USER_ENTITY_MATRIX[users_to_compare_to, :], row)
+    results = _find_similarities(user_id, USER_ENTITY_MATRIX, users_to_compare_to, sparse=False)
 
-    results_dict = {}
-    for i, dot_product in enumerate(results):
-        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
-
-    return results_dict
+    return _format_similarities(users_to_compare_to, results)
 
 def _get_sparse_similarities_batch(user_tuple):
     user_id = user_tuple[0]
     users_to_compare_to = user_tuple[1]
-    row = USER_ENTITY_MATRIX[user_id].toarray()[0]
 
-    results = USER_ENTITY_MATRIX[users_to_compare_to, :].dot(row)
+    results = _find_similarities(user_id, USER_ENTITY_MATRIX, users_to_compare_to, sparse=True)
 
-    results_dict = {}
-    for i, dot_product in enumerate(results):
-        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
-
-    return results_dict
-
+    return _format_similarities(users_to_compare_to, results)
 
 def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=True, user_cap=DEFAULT_USER_CAP,
                                 n_processes=None, save=True, output_dir=DEFAULT_DIR):
@@ -116,15 +134,21 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     USER_ENTITY_DICT = read_pickle_file(user_entity_dict_file_name)
     ENTITY_USER_DICT = read_pickle_file(entity_user_dict_file_name)
     USER_ENTITY_MATRIX = read_pickle_file(user_entity_matrix_file_name)
+    
+    if len(file_names) == 4:
+        users_to_check = read_pickle_file(file_names[3])
+    else:
+        users_to_check = list(USER_ENTITY_DICT.keys())
+
     logging.info("read in needed pickle files in %s seconds", time.time() - start_time)
     start_time = time.time()
 
     if user_cap > 0:
         user_indicies = []
-        for key in USER_ENTITY_DICT:
+        for key in users_to_check:
             user_indicies.append((key, user_cap))
     else:
-        user_indicies = list(USER_ENTITY_DICT.keys())
+        user_indicies = users_to_check
 
     logging.info("prepped users to be analyzed in %s seconds", time.time() - start_time)
     start_time = time.time()
@@ -133,7 +157,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 
     pool = Pool(processes=n_processes)
 
-    users_to_extract = pool.map(_get_top_n_users_batch, user_indicies) if user_cap \
+    users_to_extract = pool.map(_get_top_n_users_batch, user_indicies) if user_cap > 0 \
                        else pool.map(_get_relevant_users_batch, user_indicies)
 
     logging.info("Pruning took %s seconds", time.time() - start_time)
@@ -168,7 +192,6 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     
     return similarity_scores
 
-
 def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
                              n_neighbors=20, sparse=True):
     # pylint: disable=too-many-arguments, too-many-locals
@@ -176,28 +199,19 @@ def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_e
         raise ValueError("The user_id passed in is not found in the user_entity_dict")
 
     start_time = time.time()
-    relevant_users = {}
-    for entity in user_entity_dict[user_id]:
-        for user in entity_user_dict[entity]:
-            relevant_users[user] = 1
+    relevant_users = _strict_prune_space(user_id, user_entity_dict, entity_user_dict)
 
     users_to_compare_to = list(relevant_users.keys())
-    row = user_entity_matrix[user_id]
 
     logging.info("Took %s seconds to prune search space", time.time() - start_time)
     start_time = time.time()
     
-    if sparse:
-        results = user_entity_matrix[users_to_compare_to, :].dot(row)
-    else:
-        results = dot(user_entity_matrix[users_to_compare_to, :], row)
+    results = _find_similarities(user_id, user_entity_matrix, users_to_compare_to, sparse)
 
     logging.info("Took %s seconds to preform needed dot products", time.time() - start_time)
     start_time = time.time()
 
-    results_dict = {}
-    for i, dot_product in enumerate(results):
-        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+    results_dict = _format_similarities(users_to_compare_to, results)
 
     nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
     logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
@@ -211,24 +225,7 @@ def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_
         raise ValueError("The user_id passed in is not found in the user_entity_dict")
 
     start_time = time.time()
-    relevant_users = {}
-    user_sum = sum(user_entity_dict[user_id].values())
-    is_sum_sig = user_sum > SUM_SIGNIFICANCE
-    for entity in user_entity_dict[user_id]:
-        if is_sum_sig:
-            user_count = user_entity_dict[user_id][entity]
-            perc = user_count / user_sum
-        for user in entity_user_dict[entity]:
-            if user in relevant_users:
-                if is_sum_sig:
-                    relevant_users[user] += _update_score(perc)
-                else:
-                    relevant_users[user] += 1
-            else:
-                if is_sum_sig:
-                    relevant_users[user] = _update_score(perc)
-                else:
-                    relevant_users[user] = 1
+    relevant_users = _approx_prune_space(user_id, user_entity_dict, entity_user_dict)
 
     if len(relevant_users) > n_neighbors * 2:
         most_likely_users = sorted(relevant_users.items(), key=itemgetter(1), reverse=True)[:n_neighbors*2]
@@ -239,21 +236,44 @@ def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_
     logging.info("Took %s seconds to prune search space", time.time() - start_time)
     start_time = time.time()
 
-    row = user_entity_matrix[user_id]
-
-    if sparse:
-        results = user_entity_matrix[users_to_compare_to, :].dot(row)
-    else:
-        results = dot(user_entity_matrix[users_to_compare_to, :], row)
+    results = _find_similarities(user_id, user_entity_matrix, users_to_compare_to, sparse)
 
     logging.info("Took %s seconds to preform needed dot products", time.time() - start_time)
     start_time = time.time()
 
-    results_dict = {}
-    for i, dot_product in enumerate(results):
-        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+    results_dict = _format_similarities(users_to_compare_to, results)
 
     nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
+    logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
+
+    return nearest_neighbors
+
+def get_user_neighbors_above_thresh(user_id, user_entity_dict, entity_user_dict, user_entity_matrix,
+                                    thresh=0.9, sparse=True, sort=False):
+    # pylint: disable=too-many-arguments, too-many-locals
+    if user_id not in user_entity_dict:
+        raise ValueError("The user_id passed in is not found in the user_entity_dict")
+
+    start_time = time.time()
+    relevant_users = _strict_prune_space(user_id, user_entity_dict, entity_user_dict)
+
+    users_to_compare_to = list(relevant_users.keys())
+
+    logging.info("Took %s seconds to prune search space", time.time() - start_time)
+    start_time = time.time()
+    
+    results = _find_similarities(user_id, user_entity_matrix, users_to_compare_to, sparse)
+
+    logging.info("Took %s seconds to preform needed dot products", time.time() - start_time)
+    start_time = time.time()
+
+    results_dict = _format_similarities(users_to_compare_to, results)
+
+    if sort:
+        nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)
+    else:
+        nearest_neighbors = results_dict.items()
+    
     logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
 
     return nearest_neighbors
