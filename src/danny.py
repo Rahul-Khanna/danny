@@ -7,7 +7,7 @@ import dictionary_based_nn
 def main():
     #pylint: disable=too-many-branches, too-many-statements
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["dictionary", "matrix", "ann", "index", "batch"], const="index",
+    parser.add_argument("--mode", choices=["dictionary", "matrix", "nn", "index", "batch"], const="index",
                         nargs='?', help="what operations should danny perform")
     parser.add_argument("--log_file", nargs='?', help="csv containing logs to be processed")
     parser.add_argument("--user_entity_dict_file", nargs='?', help="pickle file holding \
@@ -16,6 +16,7 @@ def main():
                         entity_user_dictionary")
     parser.add_argument("--user_entity_matrix_file", nargs='?', help="pickle file holding \
                          entity_user_matrix")
+    parser.add_argument("--users_to_check_file", nargs='?', help="users whose similarities are required")
     parser.add_argument("--dense", action="store_true", help="the user_entity matrix will be dense or not")
     parser.add_argument("--user_cap", type=int, nargs='?', help="cap on how many user similarity scores \
                         should be calculated, if -1 then no cap is used")
@@ -74,15 +75,20 @@ def main():
                 supporting_functions.create_matrix(sparse=sparse)
                 print("saved matrix to \"output_data\"")
 
-    if args.mode == "ann":
+    if args.mode == "nn":
         if args.user_entity_dict_file and args.entity_user_dict_file and args.user_entity_matrix_file:
             file_1 = args.user_entity_dict_file
             file_2 = args.entity_user_dict_file
             file_3 = args.user_entity_matrix_file
+            
+            if args.users_to_check_file:
+                file_names = [file_1, file_2, file_3, args.users_to_check_file]
+            else:
+                file_names = [file_1, file_2, file_3]
 
             if args.output_dir:
                 dictionary_based_nn.get_nearest_neighbors_batch(input_type="files",
-                                                                file_names=[file_1, file_2, file_3],
+                                                                file_names=file_names,
                                                                 sparse=sparse,
                                                                 user_cap=user_cap,
                                                                 n_processes=processes,
@@ -90,7 +96,7 @@ def main():
                 print("saved similarity scores to {}".format(args.output_dir))
             else:
                 dictionary_based_nn.get_nearest_neighbors_batch(input_type="files",
-                                                                file_names=[file_1, file_2, file_3],
+                                                                file_names=file_names,
                                                                 sparse=sparse,
                                                                 user_cap=user_cap,
                                                                 n_processes=processes)
@@ -110,7 +116,7 @@ def main():
 
 
     if args.mode == "index":
-        if args.log_file and args.log_size:
+        if args.log_file:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
                                                          one_hot=args.one_hot,
@@ -132,8 +138,8 @@ def main():
             supporting_functions.create_matrix(sparse=sparse)
             print("saved matrix to \"output_data\"")
 
-    if args.mode == "all":
-        if args.log_file and args.log_size:
+    if args.mode == "batch":
+        if args.log_file:
             if args.output_dir:
                 supporting_functions.create_dictionaries(args.log_file,
                                                          one_hot=args.one_hot,
