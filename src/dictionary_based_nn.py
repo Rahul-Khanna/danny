@@ -83,12 +83,12 @@ def _get_top_n_users_batch(user_id_user_cap):
 
     top_n_keys = [tup[0] for tup in top_n]
 
-    return top_n_keys
+    return (user_id, top_n_keys)
 
 def _get_relevant_users_batch(user_id):
     users_to_look_at = _strict_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
 
-    return [key for key in users_to_look_at]
+    return (user_id, [key for key in users_to_look_at])
 
 def _get_dense_similarities_batch(user_tuple):
     user_id = user_tuple[0]
@@ -96,7 +96,7 @@ def _get_dense_similarities_batch(user_tuple):
 
     results = _find_similarities(user_id, USER_ENTITY_MATRIX, users_to_compare_to, sparse=False)
 
-    return _format_similarities(users_to_compare_to, results)
+    return (user_id, _format_similarities(users_to_compare_to, results))
 
 def _get_sparse_similarities_batch(user_tuple):
     user_id = user_tuple[0]
@@ -104,7 +104,7 @@ def _get_sparse_similarities_batch(user_tuple):
 
     results = _find_similarities(user_id, USER_ENTITY_MATRIX, users_to_compare_to, sparse=True)
 
-    return _format_similarities(users_to_compare_to, results)
+    return (user_id, _format_similarities(users_to_compare_to, results))
 
 def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=True, user_cap=DEFAULT_USER_CAP,
                                 n_processes=None, save=True, output_dir=DEFAULT_DIR):
@@ -159,21 +159,14 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 
     pool = Pool(processes=n_processes)
 
-    users_to_extract = pool.map(_get_top_n_users_batch, user_indicies) if user_cap > 0 \
-                       else pool.map(_get_relevant_users_batch, user_indicies)
+    user_tuples = pool.map(_get_top_n_users_batch, user_indicies) if user_cap > 0 \
+                  else pool.map(_get_relevant_users_batch, user_indicies)
 
     logging.info("Pruning took %s seconds", time.time() - start_time)
     start_time = time.time()
 
-    user_tuples = []
-    for i, users in enumerate(users_to_extract):
-        user_tuples.append((users_to_check[i], users))
-
-    logging.info("prepped users for dot products in %s seconds", time.time() - start_time)
-    start_time = time.time()
-
-    dictionary_results = pool.map(_get_sparse_similarities_batch, user_tuples) if sparse \
-                         else pool.map(_get_dense_similarities_batch, user_tuples)
+    dictionary_result_tuples = pool.map(_get_sparse_similarities_batch, user_tuples) if sparse \
+                               else pool.map(_get_dense_similarities_batch, user_tuples)
 
     logging.info("Matrix Multiplications took %s seconds", time.time() - start_time)
 
@@ -182,8 +175,10 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 
     similarity_scores = {}
 
-    for i, dict_result in enumerate(dictionary_results):
-        similarity_scores[users_to_check[i]] = dict_result
+    for i, dict_result_tuple in enumerate(dictionary_result_tuples):
+        user_id = dict_result_tuple[0]
+        dict_result = dict_result_tuple[1]
+        similarity_scores[user_id] = dict_result
 
     if save:
         similarity_scores_file_name = output_dir + "similarity_scores.pickle"
@@ -216,7 +211,7 @@ def get_user_neighbors_exact(user_id, user_entity_dict, entity_user_dict, user_e
     results_dict = _format_similarities(users_to_compare_to, results)
 
     nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
-    logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
+    logging.info("Took %s seconds to get number of requested neighbords", time.time() - start_time)
 
     return nearest_neighbors
 
@@ -246,7 +241,7 @@ def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_
     results_dict = _format_similarities(users_to_compare_to, results)
 
     nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)[:n_neighbors]
-    logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
+    logging.info("Took %s seconds to get number of requested neighbords", time.time() - start_time)
 
     return nearest_neighbors
 
@@ -276,6 +271,6 @@ def get_user_neighbors_above_thresh(user_id, user_entity_dict, entity_user_dict,
     else:
         nearest_neighbors = results_dict.items()
     
-    logging.info("Tool %s seconds to get number of requested neighbords", time.time() - start_time)
+    logging.info("Took %s seconds to get number of requested neighbords", time.time() - start_time)
 
     return nearest_neighbors
