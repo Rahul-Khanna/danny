@@ -114,7 +114,6 @@ def main():
                                                                 n_processes=processes)
                 print("saved similarity scores to \"output_data\"")
 
-
     if args.mode == "index":
         if args.log_file:
             if args.output_dir:

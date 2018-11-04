@@ -65,10 +65,11 @@ def _find_similarities(user_id, matrix, users_to_compare_to, sparse):
 
     return results
 
-def _format_similarities(users_to_comapre_to, similarities):
+def _format_similarities(users_to_compare_to, similarities, thresh=-1):
     results_dict = {}
     for i, dot_product in enumerate(similarities):
-        results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
+        if dot_product > thresh:
+            results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
 
     return results_dict
 
@@ -87,7 +88,7 @@ def _get_top_n_users_batch(user_id_user_cap):
 def _get_relevant_users_batch(user_id):
     users_to_look_at = _strict_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
 
-    return list(users_to_look_at.keys())
+    return [key for key in users_to_look_at]
 
 def _get_dense_similarities_batch(user_tuple):
     user_id = user_tuple[0]
@@ -113,10 +114,11 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     if input_type not in input_types:
         raise ValueError("input_type must be \"default\" or \"files\"")
 
-    if input_type == "files" and (not isinstance(file_names, list) or len(file_names) != 3):
+    if input_type == "files" and (not isinstance(file_names, list) or len(file_names) < 3):
         raise ValueError("an array of length 3 must be passed in for \"file_names\" indicating \
             the path+filename of the two dictionary files and the matrix file. The order of the \
-            files should be: 1. user_entity_dict, 2. entity_user_dict, 3. user_entity_matrix")
+            files should be: 1. user_entity_dict, 2. entity_user_dict, 3. user_entity_matrix \
+            and if needed 4. users_interested_in_array")
 
     if n_processes is not None and (not isinstance(n_processes, int) or n_processes > MAX_PROCESSES):
         raise ValueError("n_processes must be an int smaller than {}, as your computer only has {} \
@@ -165,7 +167,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 
     user_tuples = []
     for i, users in enumerate(users_to_extract):
-        user_tuples.append((i, users))
+        user_tuples.append((users_to_check[i], users))
 
     logging.info("prepped users for dot products in %s seconds", time.time() - start_time)
     start_time = time.time()
@@ -181,7 +183,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     similarity_scores = {}
 
     for i, dict_result in enumerate(dictionary_results):
-        similarity_scores[i] = dict_result
+        similarity_scores[users_to_check[i]] = dict_result
 
     if save:
         similarity_scores_file_name = output_dir + "similarity_scores.pickle"
@@ -267,7 +269,7 @@ def get_user_neighbors_above_thresh(user_id, user_entity_dict, entity_user_dict,
     logging.info("Took %s seconds to preform needed dot products", time.time() - start_time)
     start_time = time.time()
 
-    results_dict = _format_similarities(users_to_compare_to, results)
+    results_dict = _format_similarities(users_to_compare_to, results, thresh=thresh)
 
     if sort:
         nearest_neighbors = sorted(results_dict.items(), key=itemgetter(1), reverse=True)
