@@ -14,19 +14,16 @@ USER_ENTITY_DICT = None
 ENTITY_USER_DICT = None
 USER_ENTITY_MATRIX = None
 
-def _update_score(perc):
-    if perc > 0.5:
-        return 2
-    if perc > 0.25:
-        return 1
-    return 0.5
+def _update_score(perc, number_of_sites_user_1, number_of_sites_user_2):
+    return perc / (abs(number_of_sites_user_1 - number_of_sites_user_2) + 1)
 
 def _approx_prune_space(user_id, user_entity_dict, entity_user_dict):
     users_to_look_at = {}
     user_sum = sum(user_entity_dict[user_id].values())
     is_sum_sig = user_sum > SUM_SIGNIFICANCE
+    user_length = len(user_entity_dict[user_id])
     
-    for entity in entity_user_dict[user_id]:
+    for entity in user_entity_dict[user_id]:
         users_associated_with_entity = entity_user_dict[entity]
         if is_sum_sig:
             user_count = user_entity_dict[user_id][entity]
@@ -34,12 +31,12 @@ def _approx_prune_space(user_id, user_entity_dict, entity_user_dict):
         for key in users_associated_with_entity:
             if key in users_to_look_at:
                 if is_sum_sig:
-                    users_to_look_at[key] += _update_score(perc)
+                    users_to_look_at[key] += _update_score(perc, user_length, len(user_entity_dict[key]))
                 else:
                     users_to_look_at[key] += 1
             else:
                 if is_sum_sig:
-                    users_to_look_at[key] = _update_score(perc)
+                    users_to_look_at[key] = _update_score(perc, user_length, len(user_entity_dict[key]))
                 else:
                     users_to_look_at[key] = 1
 
@@ -78,10 +75,18 @@ def _get_top_n_users_batch(user_id_user_cap):
     user_cap = user_id_user_cap[1]
 
     users_to_look_at = _approx_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
-
-    top_n = sorted(users_to_look_at.items(), key=itemgetter(1), reverse=True)[:user_cap]
-
-    top_n_keys = [tup[0] for tup in top_n]
+    if len(users_to_look_at) > user_cap:
+        sorted_users = sorted(users_to_look_at.items(), key=itemgetter(1), reverse=True)
+        cut_off_value = sorted_users[user_cap - 1][1]
+        top_n_keys = []
+        
+        for tup in sorted_users:
+            if tup[1] >= cut_off_value:
+                users_to_compare_to.append(tup[0])
+            else:
+                break
+    else:
+        top_n_keys = list(users_to_look_at.keys())
 
     return (user_id, top_n_keys)
 
@@ -223,10 +228,15 @@ def get_user_neighbors_approx(user_id, user_entity_dict, entity_user_dict, user_
 
     start_time = time.time()
     relevant_users = _approx_prune_space(user_id, user_entity_dict, entity_user_dict)
-
-    if len(relevant_users) > n_neighbors * 2:
-        most_likely_users = sorted(relevant_users.items(), key=itemgetter(1), reverse=True)[:n_neighbors*2]
-        users_to_compare_to = [tup[0] for tup in most_likely_users]
+    if len(relevant_users) > DEFAULT_USER_CAP:
+        sorted_users = sorted(relevant_users.items(), key=itemgetter(1), reverse=True)
+        cut_off_value = sorted_users[DEFAULT_USER_CAP - 1][1]
+        users_to_compare_to = []
+        for tup in sorted_users:
+            if tup[1] >= cut_off_value:
+                users_to_compare_to.append(tup[0])
+            else:
+                break
     else:
         users_to_compare_to = list(relevant_users.keys())
 
