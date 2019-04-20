@@ -181,6 +181,95 @@ def create_dictionaries(raw_log_file, one_hot=False, n_processes=None, save=True
 
     return combined_dicts
 
+def reindex_log_file(raw_log_file, save=True, output_dir=DEFAULT_DIR):
+    user_index = {}
+    entity_index = {}
+    user_count = 0
+    entity_count = 0
+    new_logs = []
+    start_time.time()
+    with open(raw_log_file) as logs:
+        for line in logs:
+            parts = line.split(",")
+            user_id = int(parts[0])
+            entity_id = int(parts[1])
+
+            if user_id not in user_index:
+                user_index[user_id] = user_count
+                user_count += 1
+            
+            if entity_id not in entity_index:
+                entity_index[entity_id] = entity_count
+                entity_count += 1
+
+            new_logs.append(str(user_index[user_id]) + "," + str(entity_index[entity_id]))
+
+    logging.info("read in and converted logs in %s seconds", time.time() - start_time)
+    start_time = time.time()
+
+    if save:
+        converted_log_file_name = output_dir + "converted_logs.csv"
+        with open(converted_log_file_name, "w") as f:
+            for i, line in enumerate(new_logs):
+                if i < len(new_logs) -1:
+                    f.write(line+"\n")
+                else:
+                    f.write(line)
+        
+        logging.info("wrote out converted logs in %s seconds", time.time() - start_time)
+        start_time = time.time()
+
+        user_index_file = output_dir + "user_index.pickle"
+        entity_index_file = output_dir + "entity_index.pickle"
+        write_pickle_file(user_index, user_index_file)
+        write_pickle_file(entity_index, entity_index_file)
+
+        logging.info("wrote out indicies in %s seconds", time.time() - start_time)
+        start_time = time.time()
+
+        del user_index
+        del entity_index
+        del new_logs
+        return True
+    
+    return (new_logs, user_index, entity_index)
+
+def reverse_index(input_type, data_source, index_type=None, save=True, output_dir=DEFAULT_DIR):
+    input_types = ["file", "dict"]
+    if input_type not in input_types:
+        raise ValueError("input_type must be one of \"file\" or \"dict\"")
+
+    if input_type == "file" and not isinstance(data_source, str):
+        raise ValueError("data_source must indicated the pickle file you would like to be read in to \
+            to reverse your index")
+
+    if input_type == "dict" and not isinstance(data_source, dict):
+        raise ValueError("data_source must be the needed dictionary/index")
+
+   if save and index_type is None:
+        raise ValueError("index_type cannot be null if the reveresed index is going to be saved. Common \
+            options are: entity, user, site, song, video")
+
+    reversed_index = {}
+
+    if input_type == "file":
+        index = read_pickle_file(data_source)
+    else:
+        index = data_source
+
+    for key in index:
+        reversed_index[index[key]] = key
+
+    if save:
+        reversed_index_file_name = output_dir + index_type + "_reverse_index.pickle"
+        write_pickle_file(reversed_index, reversed_index_file_name)
+
+        del reversed_index
+        return True
+
+    return reversed_index
+
+
 def create_matrix(input_type="default", data_source=None, sparse=True, save=True, output_dir=DEFAULT_DIR):
 
     input_types = ["default", "file", "dict"]
