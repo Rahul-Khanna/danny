@@ -444,7 +444,6 @@ def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
     else:
         users_to_check = list(USER_ENTITY_DICT.keys())
 
-    print(len(users_to_check))
     logging.info("read in dictionary pickle files in %s seconds", time.time() - start_time)
     start_time = time.time()
     if user_cap > 0:
