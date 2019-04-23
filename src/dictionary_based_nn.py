@@ -1,11 +1,114 @@
+"""
+    The core functionalities of danny are written here. Given three specific data structures, danny will
+    parralelize the task of finding nearest neighbors per each user. Right now danny does this using Python's
+    multiprocessing library, but these functions could be easily ported over to a Map Reduce job.
+
+    The three needed data structures are:
+        1. user-entity dictionary: key - user_id | value - dictionary
+            sub dictionary: key - entity_id | value - either total visits by user_id to entity_id
+                                                      or 1 for one hot encoding
+        2. entity-user dictionary: key - entity_id | value - dictionary
+            sub dictionary: key - user_id | value - either total visits by user_id to entity_id
+                                                    or 1 for one hot encoding
+        3. user-entity matrix:
+            * can be sparse or dense
+            * row_index = user_index (x_i)
+            * column_index = entity_index (y_i)
+            * M[x_i][y_i] = either total visits by user_id to entity_id or 1 for one hot encoding
+
+    All three can be obtained using the supporting_functions module, or through the danny wrapper script.
+    Parts of these can also be easily written as a Map Reduce job, and are using Python's multiprocessing
+    library.
+
+    There are two seperate strategies danny can use in order to speed up the search for nearest neighbors:
+        * a smart, but more comprehensive search through the user space.
+        * an approximate mode (default)
+
+    Smart, but more comprehensive mode:
+        Danny's core idea is centered around the idea of reducing the search space for all users by using
+        more precomputed data in a parralelized manner. By using dictionaries it is easy to quickly reduce
+        the search space per user to only those users who share a common entity. If user_i and user_j do not
+        share a common entity it is very difficult to consider user_i's entity vistiation pattern and
+        user_j's visitation pattern as similar.
+
+        Once the search space per user is reduced to only those users who share a common entity, we can
+        search through this space using matrix mulltiplication, but with a much smaller number of
+        calculations needed per user. This is done in _find_similarities.
+
+        To use this functionality you must call get_nearest_neighbors_batch with user_cap=-1
+
+        Let G, be a bi-partite graph G(U, V, E), where U = set of all users, V = set of all entities,
+        E = set of all edges
+            * For reference, general time complexity of NN is O(|U|^2*|V|)
+
+        Average Time complexity:
+            let k = average number of users per user who share a common entity
+
+            * Pruning the space: O(|U| * avg_d(u) * avg_d(v)) = O(|U|*(|E|/|U|)*(|E|/|V|)) = O(|E|^2/|V|)
+           
+            * Matrix mulltiplication: O(|U|*|V|*k)
+
+            So when O(|E|) << O(|U|*|V|): (Note: |E| is maxed out at |U|*|V| in a bipartite graph)
+
+                * O(|E|^2) <<<< O((|U|*|V|)^2)
+                * therefore: O(|E|^2/|V|) <<<< O((|U|*|V|)^2 / |V|)
+                * but (|U|*|V|)^2 / |V| == |U|^2*|V|
+                * therefore: O(|E|^2/|V|) <<<< O(|U|^2*|V|)
+
+                * also if O(k) << O(|U|)
+                    * which is highly likley given the degrees of each vertex (user and entity) is low
+                * then O(|U|*|V|*k) ~ O(|U|*|V|) << O(|U|^2*|V|)
+
+    Approximate mode:
+        Building on top of the reducing the search space idea, instead of just looking for users who share a
+        common entity, danny assigns a "closeness score" to each user that shares an entity with a given user
+        . danny then selects the top-n users from this list of users with common entities, where n by default
+        is 500, but is configurable. These top-n users are the only users who will be compared to a given
+        user in the matrix multiplication step. Extra time is spent here as we sort the list of users with a
+        common entity, but it is justified as we can set a cap on the number of dot products required per
+        user without loosing too much accuracy.
+
+        Let G, be a bi-partite graph G(U, V, E), where U = set of all users, V = set of all entities,
+        E = set of all edges
+            * For reference, general time complexity of NN is O(|U|^2*|V|)
+
+        Average Time complexity:
+            For reference, general time complexity of NN is O(|U|^2*|V|)
+
+            let k = average number of users per user who share a common entity
+
+            * Pruning the space: O(|U| * (avg_d(u) * avg_d(v) + klog(k)))
+                               = O(|U|*((|E|/|U|)*(|E|/|V|) + klog(k)))
+                               = O(|E|^2/|V| + |U|*klog(k))
+           
+            * Matrix mulltiplication: O(|U|*|V|)
+
+            So when O(|E|) << O(|U|*|V|): (Note: |E| is maxed out at |U|*|V| in a bipartite graph)
+
+                * if O(k) << O(|U|)
+                    * which is highly likley given the degrees of each vertex (user and entity) is low
+                * then O(|U|*klog(k)) ~ O(|U|)
+                * then O(|E|^2/|V| + |U|*klog(k)) ~ O(|E|^2/|V| + |U|)
+                * but O(|E|^2/|V|) <<<< O(|U|^2*|V|) (shown above) and O(|U|) <<<< O(|U|^2*|V|)
+                * therfore  O(|E|^2/|V| + |U|) <<<< O(|U|^2*|V|)
+
+                * O(|U|*|V|) << O(|U|^2*|V|)
+
+    You can also just prune your search space in a parralelized way, or just get the matrix mulltiplications
+    done in a parralelized way if desired.
+
+    Important functions:
+        prune_space_batch
+        matrix_multiplication_batch
+        get_nearest_neighbors_batch
+"""
 import gc
 import logging
 from multiprocessing import Pool, cpu_count
-from numpy import dot
 from operator import itemgetter
-import time
 import random
-import sys
+import time
+from numpy import dot
 from supporting_functions import read_pickle_file
 from supporting_functions import write_pickle_file
 
@@ -19,20 +122,16 @@ USER_ENTITY_DICT = None
 ENTITY_USER_DICT = None
 USER_ENTITY_MATRIX = None
 
-
 def _update_score(perc, number_of_entities_user_1, number_of_entities_user_2):
     """
-        Heuristic used to determine how similar user_2's entity visitation pattern is to user_1's visitation
-        pattern. The idea being that we look at:
-            * how significant the current entity is in user_1's visitation history
-            * the difference in the number of entities user_1 and user_2 have visited.
+        Heuristic used to determine how similar user_2's entity visitation pattern is to user_1's entity
+        visitation pattern. The main idea behind the function is to look at:
+            * how significant the current entity is in user_1's visitation history (the perc param)
+            * the difference in the number of entities user_1 and user_2 have visited
 
         The more significant the current entity is in user_1's history, and the smaller the difference in the
-        number of entities visited between the two users, the more likely the two users are going to have 
-        similar visitation patterns. 
-
-        The operations to obtain the three datapoints we look at are at most linear (in the number of
-        entities) and so do not add complexity to the pruning process. 
+        number of entities visited between the two users, the more likely the two users are going to have
+        similar visitation patterns.
 
         Note: This function is only called once we have established that user_1 and user_2 have both visited
               the entity in question
@@ -57,13 +156,13 @@ def _approx_prune_space(user_id, user_entity_dict, entity_user_dict):
 
         * The crux of what danny does is it throws out all users who do not share an entity with the user in
           question.
-        * This function takes that one step further. Of the users who share an entity with the 
+        * This function takes that one step further. Of the users who share an entity with the
           user-in-question (user associated with the user_id) the function assigns a score as to how likely
           each user's vistiation pattern is to the user-in-question's visitation pattern
         * It only attempts to create this score per user if the user-in-question has had enough overall
           visits––the benefits of the extra calculations to determine this score are not realized if the
           user-in-question is not a high volume user
-        
+       
         Params:
             user_id           (int) : id of the user whose list of potential close users is needed
             user_entity_dict (dict) : dictionary where: key – user_id | value - list of entity ids user
@@ -74,14 +173,14 @@ def _approx_prune_space(user_id, user_entity_dict, entity_user_dict):
         Returns:
             dict : dictionary containing users to look at when evaluating which users are closest to the user
                    associated with the user_id
-                   key - user_id | value - score of how likely that user's visitation patterns is close to 
+                   key - user_id | value - score of how likely that user's visitation patterns is close to
                                            user-in-question's visitation patterns
     """
     users_to_look_at = {}
     user_sum = sum(user_entity_dict[user_id].values())
     is_sum_sig = user_sum > SUM_SIGNIFICANCE
     user_length = len(user_entity_dict[user_id])
-    
+   
     for entity in user_entity_dict[user_id]:
         users_associated_with_entity = entity_user_dict[entity]
         if is_sum_sig:
@@ -108,8 +207,9 @@ def _strict_prune_space(user_id, user_entity_dict, entity_user_dict):
 
         The crux of what danny does is it throws out all users who do not share an entity with the user in
         question. It accomplishes this by looking at each entity a user has visited and then grabbing all
-        users who have visited these entities
-        
+        users who have visited these entities. If user_i has not shared an entity with a user_j, then there's
+        very little sense in looking at how close user_i and user_j are.
+       
         Params:
             user_id           (int) : id of the user whose list of potential close users is needed
             user_entity_dict (dict) : dictionary where: key – user_id | value - list of entity ids user
@@ -122,13 +222,88 @@ def _strict_prune_space(user_id, user_entity_dict, entity_user_dict):
                    associated with the user_id, key - user_id | value - 1
     """
     users_to_look_at = {}
-    
+   
     for entity in user_entity_dict[user_id]:
         users_associated_with_entity = entity_user_dict[entity]
         for key in users_associated_with_entity:
             users_to_look_at[key] = 1
-    
+   
     return users_to_look_at
+
+def _get_top_n_users_batch(user_id_user_cap):
+    """
+        Actual function called by pool workers to pick out the top n most likely users similar to a given
+        user (user-in-question) for the final vector comparison. This function is called when danny is
+        running in approximate mode.
+
+        Function first calls _approx_prune_space, which assings a scores (via a heuristic) to every relevant
+        user. This score is a measure of how likely each relevant user's visitation patterns are to the
+        user-in-question's visitation pattern.
+            * A relevant user is a user whose visitation pattern shares at least one entity with the
+              user-in-question's visitation pattern.
+
+        Next the function sorts the relevant users by their scores, and then selects the top n users, where
+        n is passed in (user_cap). If there is a tie in scores that causes the list to expand past n users,
+        the function randomly samples from the tied users and ensures the list is below the max number of
+        associated users per each user-in-question. The max number is 1000 and this is done for storage
+        purposes.
+
+        Params:
+            user_id_user_cap (tup) : user_id, number of similar users desired (max is 1000)
+
+        Returns:
+            tup : user_id, list of n most similar users
+
+    """
+    user_id = user_id_user_cap[0]
+    user_cap = min(user_id_user_cap[1], MAX_USER_CAP)
+
+    users_to_look_at = _approx_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
+   
+    if len(users_to_look_at) > user_cap:
+        sorted_users = sorted(users_to_look_at.items(), key=itemgetter(1), reverse=True)
+        cut_off_value = sorted_users[user_cap - 1][1]
+
+        top_n_keys = []
+        keys_to_randomly_select_from = []
+   
+        for tup in sorted_users:
+            if tup[1] > cut_off_value:
+                top_n_keys.append(tup[0])
+            elif tup[1] == cut_off_value:
+                keys_to_randomly_select_from.append(tup[0])
+            else:
+                break
+
+        sample_amount = min(MAX_USER_CAP - len(top_n_keys), len(keys_to_randomly_select_from))
+        if sample_amount == len(keys_to_randomly_select_from):
+            keys_to_add = keys_to_randomly_select_from
+        else:
+            keys_to_add = random.sample(keys_to_randomly_select_from, sample_amount)
+       
+        for key in keys_to_add:
+            top_n_keys.append(key)
+    else:
+        top_n_keys = list(users_to_look_at.keys())
+
+    return (user_id, top_n_keys)
+
+def _get_relevant_users_batch(user_id):
+    """
+        Actual function called by pool workers to pick out all relevant users when considering which
+        users would have close visitation patterns. This function is called when danny is
+        running in smart, but more comprehensive mode.
+
+        Params:
+            user_id (int) : id of user to grab relevant users for
+
+        Returns:
+            tup : user_id, list of relevant user_ids
+
+    """
+    users_to_look_at = _strict_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
+
+    return (user_id, [key for key in users_to_look_at])
 
 def _find_similarities(user_id, matrix, users_to_compare_to, sparse):
     """
@@ -138,10 +313,10 @@ def _find_similarities(user_id, matrix, users_to_compare_to, sparse):
         Note: user_ids (which are ints) must equal the row indicies associated with the count vectors for
               those user_ids. i.e. if a user's id is 0, then that user's count vector must be stored in row
               zero of the passed in matrix.
-        
+       
         Params:
             user_id             (int) : user whose similar users are wanted
-            matrix          (fill_in) : matrix where each row contains a user's entity visitation pattern
+            matrix           (matrix) : matrix where each row contains a user's entity visitation pattern
                                         encoded as a count vector. Each column contains each entity's user
                                         vistiation record encoded as a count vector. Can be sparse.
             users_to_compare_to (arr) : list of user_ids whose entity visitation patterns should be compared
@@ -173,7 +348,7 @@ def _format_similarities(users_to_compare_to, similarities, thresh=-1.0):
         This function is also called by pool workers.
 
         Params:
-            users_to_compare_to (arr) : user_ids asscoiated with the dot scores that are being 
+            users_to_compare_to (arr) : user_ids asscoiated with the dot scores that are being
                                         formated. The function assumes that user_id in position i is
                                         asscoiated with similarity score in position i
             similarities        (arr) : similarity scores to be formatted
@@ -189,86 +364,6 @@ def _format_similarities(users_to_compare_to, similarities, thresh=-1.0):
             results_dict[users_to_compare_to[i]] = float("{0:.4f}".format(dot_product))
 
     return results_dict
-
-def _get_top_n_users_batch(user_id_user_cap):
-    """
-        This function approximates which user's are close and selects the top_n it deems close, which greatly
-        saves time if number_of_nodes >> number_of_edges in your graph of user-entities. Otherwise, I would
-        use the non-approximate methodolgy below.
-
-        Actual function called by pool workers to pick out the top n most likely users similar to a given
-        user (user-in-question). 
-
-        Function first calls _approx_prune_space, which assings a scores (via a heuristic) to every relevant
-        user. This score is a measure of how likely each relevant user's visitation patterns are to the
-        user-in-question's visitation pattern. 
-            * A relevant user is a user whose visitation pattern shares at least one entity with the 
-              user-in-question's visitation pattern.
-
-        Next the function sorts the relevant users by their scores, and then selects the top n users, where
-        n is passed in (user_cap). If there is a tie in scores that causes the list to expand past n users,
-        the function randomly samples from the tied users and ensures the list is below the max number of
-        associated users per each user-in-question. The max number is 1000 and this is done for storage
-        purposes.
-
-        Params:
-            user_id_user_cap (tup) : user_id, number of similar users desired (max is 1000)
-
-        Returns:
-            tup : user_id, list of n most similar users
-
-    """
-    user_id = user_id_user_cap[0]
-    user_cap = min(user_id_user_cap[1], MAX_USER_CAP)
-
-    users_to_look_at = _approx_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
-    
-    if len(users_to_look_at) > user_cap:
-        sorted_users = sorted(users_to_look_at.items(), key=itemgetter(1), reverse=True)
-        cut_off_value = sorted_users[user_cap - 1][1]
-
-        top_n_keys = []
-        keys_to_randomly_select_from = []
-    
-        for tup in sorted_users:
-            if tup[1] > cut_off_value:
-                top_n_keys.append(tup[0])
-            elif tup[1] == cut_off_value:
-                keys_to_randomly_select_from.append(tup[0])
-            else:
-                break
-
-        sample_amount = min(MAX_USER_CAP - len(top_n_keys), len(keys_to_randomly_select_from))
-        if sample_amount == len(keys_to_randomly_select_from):
-            keys_to_add = keys_to_randomly_select_from
-        else:
-            keys_to_add = random.sample(keys_to_randomly_select_from, sample_amount)
-        
-        for key in keys_to_add:
-            top_n_keys.append(key)
-    else:
-        top_n_keys = list(users_to_look_at.keys())
-
-    return (user_id, top_n_keys)
-
-def _get_relevant_users_batch(user_id):
-    """
-        The non-approximate version of the above function. Use this function when 
-        number_of_nodes ≈ number_of_edges.
-
-        Actual function called by pool workers to pick out all relevant users when considering which
-        users would have close visitation patterns.
-
-        Params:
-            user_id (int) : id of user to grab relevant users for
-
-        Returns:
-            tup : user_id, list of relevant user_ids
-
-    """
-    users_to_look_at = _strict_prune_space(user_id, USER_ENTITY_DICT, ENTITY_USER_DICT)
-
-    return (user_id, [key for key in users_to_look_at])
 
 def _get_dense_similarities_batch(user_tuple):
     """
@@ -315,7 +410,7 @@ def _get_sparse_similarities_batch(user_tuple):
 def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
     """
         Function that sets up the mulitprocessing environment and sets off the extraction of either the full
-        list of possible nearest neighbors or the approximate top_n nearest neighbors for each user. 
+        list of possible nearest neighbors or the approximate top_n nearest neighbors for each user.
 
         Excpets up to three pickle files names:
             1. file name for the user_entity dictionary
@@ -327,7 +422,7 @@ def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
 
         Params:
             file_names  (arr) : array of the three files mentioned above
-            n_processes (int) : number of processes danny should use when extracting possible 
+            n_processes (int) : number of processes danny should use when extracting possible
                                 nearest neighbors. If left None, danny will use 2 less than the number
                                 of cores available on your machine.
             user_cap    (int) : the number of top users that should be extracted in the approximate mode, or
@@ -338,7 +433,7 @@ def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
                     (user_id, list of relevant user_ids to check for that user)
 
     """
-    # pylint: disable=unused-variable, global-statement, too-many-arguments, too-many-locals
+    # pylint: disable=global-statement, too-many-arguments, too-many-locals
     global USER_ENTITY_DICT, ENTITY_USER_DICT
     start_time = time.time()
     USER_ENTITY_DICT = read_pickle_file(file_names[0])
@@ -363,16 +458,15 @@ def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
     start_time = time.time()
 
     n_processes = MAX_PROCESSES - 2 if n_processes is None else n_processes
-    chunksize = int(len(user_indicies)/n_processes) + 1
 
     pool = Pool(processes=n_processes)
 
     user_tuples = pool.map(_get_top_n_users_batch, user_indicies) if user_cap > 0 \
                   else pool.map(_get_relevant_users_batch, user_indicies)
-    
+   
     logging.info("Pruning took %s seconds", time.time() - start_time)
     start_time = time.time()
-    
+   
     pool.close()
     pool.join()
     del USER_ENTITY_DICT
@@ -386,14 +480,14 @@ def prune_space_batch(file_names, n_processes=None, user_cap=DEFAULT_USER_CAP):
     return user_tuples
 
 def matrix_multiplication_batch(file_names, user_tuples_list=None, n_processes=None, sparse=True):
-     """
+    """
         Function that sets up the multiprocessing environment and sets off the calculation of dot products
         for each user.
 
         Excpets up to two pickle files names:
             1. file name for the user_entity matrix
             2. file name for the user_tuples list genereated by prune_space_batch (or data of similar format)
-                * if this isn't provided it must be passed in
+                * if this isn't provided, the actual list must be passed in
 
         Params:
             file_names       (arr) : array of the two files mentioned above
@@ -407,13 +501,14 @@ def matrix_multiplication_batch(file_names, user_tuples_list=None, n_processes=N
         Returns:
             dict : key - user_id | value - dict -- key - user_id, value: dot product
     """
+    #pylint: disable=global-statement
     global USER_ENTITY_MATRIX
     start_time = time.time()
     USER_ENTITY_MATRIX = read_pickle_file(file_names[0])
-    if len(file_names) < 2 and user_tuples_list is None:
+    if len(file_names) < 2 and not isinstance(user_tuples_list, list):
         raise ValueError("you must either pass in a file name for the output of prune_space_batch, or \
                           the list it outputs")
-    
+   
     user_tuples = read_pickle_file(file_names[1]) if len(file_names) > 1 else user_tuples_list
 
     logging.info("read in pickle file in %s seconds", time.time() - start_time)
@@ -437,9 +532,9 @@ def matrix_multiplication_batch(file_names, user_tuples_list=None, n_processes=N
 
     logging.info("Deleting matrix took %s seconds", time.time() - start_time)
     start_time = time.time()
-    
+   
     similarity_scores = {}
-    for i, dict_result_tuple in enumerate(dictionary_result_tuples):
+    for dict_result_tuple in dictionary_result_tuples:
         user_id = dict_result_tuple[0]
         dict_result = dict_result_tuple[1]
         similarity_scores[user_id] = dict_result
@@ -449,14 +544,13 @@ def matrix_multiplication_batch(file_names, user_tuples_list=None, n_processes=N
 def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=True, user_cap=DEFAULT_USER_CAP,
                                 n_processes=None, save=True, output_dir=DEFAULT_DIR):
     """
-        Function that sets up the multiprocessing environment and calls prune_space_batch and
-        matrix_multiplication_batch in order to extract per user all users who have a dot product above zero
-        or the approximate top_n closest users.
+        Function that calls prune_space_batch and matrix_multiplication_batch in order to extract per user
+        all users who have a dot product above zero or the approximate top_n closest users.
 
         Expects three pickle files:
-            1. file name for the user_entity dictionary, key - user_id | value - dict 
+            1. file name for the user_entity dictionary, key - user_id | value - dict
                 -- key - entity_id, value - number of times user_id visited entity_id
-            2. file name for the entity_user dictionary, key - entity_id | value - dict 
+            2. file name for the entity_user dictionary, key - entity_id | value - dict
                 -- key - user_id, value - number of times user_id visited entity_id
             3. file name for user_entity matrix, rows represent either one hot or count vectors describing
                the visitation pattern for each user
@@ -482,6 +576,7 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
                           it returns the dictionary it would otherwise save. The dictionary is of the
                           following format: key - user_id | value - dict -- key - user_id, value: dot product
     """
+    #pylint: disable=too-many-arguments
     input_types = ["default", "files"]
     if input_type not in input_types:
         raise ValueError("input_type must be \"default\" or \"files\"")
@@ -503,18 +598,19 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
     user_entity_matrix_file_name = file_names[2] if input_type == "files" else \
                                    output_dir + "user_entity_matrix.pickle"
 
-    dict_file_names = [user_entity_dict_file_name, entity_user_dict_file_name]                           
-    
+    dict_file_names = [user_entity_dict_file_name, entity_user_dict_file_name]
+  
     if len(file_names) == 4:
-        dict_file_name.append(file_names[3])
+        dict_file_names.append(file_names[3])
 
     user_tuples = prune_space_batch(dict_file_names, n_processes, user_cap)
     gc.collect()
 
-    similarity_scores = matrix_multiplication_batch(user_entity_matrix_file_name, 
-                                                    user_tuples, 
-                                                    n_processes, 
+    similarity_scores = matrix_multiplication_batch(user_entity_matrix_file_name,
+                                                    user_tuples,
+                                                    n_processes,
                                                     sparse)
+    del user_tuples
     gc.collect()
 
     if save:
@@ -523,5 +619,5 @@ def get_nearest_neighbors_batch(input_type="default", file_names=None, sparse=Tr
 
         del similarity_scores
         return True
-    
+  
     return similarity_scores
