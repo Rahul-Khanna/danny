@@ -210,6 +210,7 @@ So as you can see given the right conditions, `O(|E|) << O(|U|*|V|)`, **danny** 
 4. Try and reduce duplicated calculations arising from parallelization
 5. Talk more about when to use exact mode and when to use approximate mode
 6. Allow danny to be pip installable
+7. Think about strategies to update the index and nearest neighbors as new users and entities enter the graph
 
 ## Copyright
 Copyright (c) 2019 Rahul Khanna, released under the GPL v3 license.
