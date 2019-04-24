@@ -32,7 +32,7 @@ Both the approximate method and the exact method are based around the concept of
 
 **danny** also does most of its core tasks in a **parallelized fashion** using Python's `multiprocessing` library. This means **porting this code over to any Map-Reduce framework shouldn't be too hard**. This also means **danny** can scale horizontally, which is great given the current shift towards cloud computing.
 
-**danny** can either act as your **full ETL pipeline** for figuring out nearest neighbors **or** just a **useful tool to get quick neighbor information about certain users**. Further all the stages of **danny** can be completely used independently of the others, making the pipeline mode very flexible for others to drop in pieces they want to control... so if you're just interested in creating count dictionaries in a parallelized fashion, **danny** has you covered!
+**danny** can either act as your **full ETL pipeline** for figuring out nearest neighbors **or** just a **useful tool to get quick neighbor information about certain users**. Further, all the stages of **danny** can be completely used independently of the others, making the pipeline mode very flexible for others to drop in pieces they want to control... so if you're just interested in creating count dictionaries in a parallelized fashion, **danny** has you covered!
 
 **Finally** I will be referring to a particular bipartite graph further down, here is what this graph is. You can look at the logs being passed in as the connections in a bipartite graph G(U, V, E), where:
 * U = {set of all user vertices}
@@ -201,7 +201,7 @@ So when `O(|E|) << O(|U|*|V|)`: (Note: |E| is maxed out at |U|*|V| in a bipartit
 
     * both pruning and matrix multiplication steps takes less time than O(|U|^2*|V|)
 
-So as you can see given the right conditions, `O(|E|) << O(|U|*|V|)`, **danny** preforms batter than regular Nearest Neighbors, with the additional benefit of running in parallel. For more on this check dictionary_based_nn.py.
+So as you can see given the right conditions, `O(|E|) << O(|U|*|V|)`, **danny** preforms better than regular Nearest Neighbors, with the additional benefit of running in parallel. For more on this check dictionary_based_nn.py.
 
 ## Work Still Left To Do:
 1. Use mmap to reduce memory footprint
@@ -211,6 +211,7 @@ So as you can see given the right conditions, `O(|E|) << O(|U|*|V|)`, **danny** 
 5. Talk more about when to use exact mode and when to use approximate mode
 6. Allow danny to be pip installable
 7. Think about strategies to update the index and nearest neighbors as new users and entities enter the graph
+8. Fix typos :grimacing:
 
 ## Copyright
 Copyright (c) 2019 Rahul Khanna, released under the GPL v3 license.
