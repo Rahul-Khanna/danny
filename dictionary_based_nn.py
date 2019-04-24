@@ -89,7 +89,8 @@
                     * which is highly likley given the degrees of each vertex (user and entity) is low
                 * then O(|U|*klog(k)) ~ O(|U|)
                 * then O(|E|^2/|V| + |U|*klog(k)) ~ O(|E|^2/|V| + |U|)
-                * but O(|E|^2/|V|) <<<< O(|U|^2*|V|) (shown above) and O(|U|) <<<< O(|U|^2*|V|)
+                * but O(|E|^2/|V|) <<<< O(|U|^2*|V|) (shown above)
+                * and |U| <= |E| <= |E|^2/|E| <= |E|^2/|V|
                 * therfore  O(|E|^2/|V| + |U|) <<<< O(|U|^2*|V|)
 
                 * O(|U|*|V|) << O(|U|^2*|V|)

@@ -469,8 +469,8 @@ def create_dictionaries(raw_log_file, one_hot=False, n_processes=None, save=True
 
 def create_matrix(input_type="default", data_source=None, sparse=True, save=True, output_dir=DEFAULT_DIR):
     """
-        Creates either a one_hot or count matrix, encoding the visitation patterns of users to entities in
-        the rows, and the visits by user to an entity in the columns. Takes in a the user_entity_dict and
+        Creates either a one_hot or count matrix, encoding the users' entity visitation patterns in the rows, 
+        and each entities' user visitation history in the columns. Takes in a the user_entity_dict and
         creates the needed matrix via sklearn's DictVectorizer function. The matrix can either be sparse or
         dense, with the default being sparse.
 
