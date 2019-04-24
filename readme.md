@@ -9,6 +9,7 @@
 * [ETL Pipeline Description](#etl-pipeline-description)
 * [Why Build danny](#why-build-danny)
 * [Some Theory](#some-theory)
+* [Work Still Left To Do](#work-still-left-to-do)
 * [Copyright](#copyright)
 
 ## Quick Summary
@@ -211,4 +212,4 @@ So as you can see given the right conditions, `O(|E|) << O(|U|*|V|)`, **danny** 
 6. Allow danny to be pip installable
 
 ## Copyright
-Copyright (c) 2019 Rahul Khanna, released under the GNU v3 license.
+Copyright (c) 2019 Rahul Khanna, released under the GPL v3 license.
