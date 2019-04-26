@@ -47,7 +47,7 @@ In general **danny** should be used when `O(|E|) << O(|U|*|V|)`
 
 ### Setup:
 1. Clone this repo
-2. Ensure you have pip installed (Note: Good practice would be to have a virtual-env for this project)
+2. Ensure you have python 3.6 (or newer) and  pip installed (Note: Good practice would be to have a virtual-env for this project)
 3. `sh setup.sh`
 
 ### How To Run:
