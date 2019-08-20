@@ -41,6 +41,12 @@ Both the approximate method and the exact method are based around the concept of
 
 Hopefully it is clear that this graph between users and entities is a bipartite one.
 
+Note:
+* By construction there exists no u_i belonging to U s.t. deg(u_i) = 0, where deg(u_i): The number of edges connected to user i.
+* Such users wouldn't appear in a log record of users visiting entities
+* Similarly there are no such v_i belonging to V s.t. deg(v_i) = 0
+* These facts give us a further condition that this graph is actually a connected bipartite graph
+
 In general **danny** should be used when `O(|E|) << O(|U|*|V|)`
 
 ## How To Use
@@ -73,7 +79,7 @@ In general **danny** should be used when `O(|E|) << O(|U|*|V|)`
     5. **dictionary_based_nn.matrix_multiplication_batch**
     6. **dictionary_based_nn.get_nearest_neighbors_batch**
 
-3. For ad-hoc work, running the **danny** wrapper in *build_index* mode and then using any of the three functions in **user_functions.py** can quickly give you nearest neighbor information on a handful of users. This avoids the full ETL pipeline functionality of danny, but still allows a researcher to gain valuable information on the nature of clusters and user behavior.
+3. For ad-hoc work, run the **danny** wrapper in *build_index* mode and then you can use any of the three functions in **user_functions.py** to quickly give you nearest neighbor information on a handful of users. This avoids the full ETL pipeline functionality of danny, but still allows a researcher to gain valuable information on the nature of clusters and user behavior.
 
 ## Important File Descriptions
 * `dannyw.py` - wrapper script that allows a user to interact with danny's core functionality via the command line.
@@ -140,10 +146,12 @@ Here are some important facts to keep in mind about the bipartite graph:
     * sum_over_all_users(deg(u_i)) = sum_over_all_entities(deg(v_i)) = |E|
     * |E| = sum_over_all_users(d(u)) = |U| * avg_d(u)
         * avg_d(u) = |E| / |U|, lly avg_d(v) = |E| / |V|
-    * |U| <= |E|
-    * |V| <= |E|
     * |E| <= |U| * |V|
     * When O(|E|) << O(|U|*|V|), deg(u_i) and deg(v_j) are low for most i, j
+
+We also have the added benefit that our bipartite graph is a connected one, which gives us the following two facts:
+    * |U| <= |E|
+    * |V| <= |E|
 
 So as mentioned standard nearest neighbors occurs in `O(|U|*|U|*|V|)` time
 * for each user you look at every other user and do |V| operations (the dot product)
