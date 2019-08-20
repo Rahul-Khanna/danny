@@ -42,9 +42,10 @@ Both the approximate method and the exact method are based around the concept of
 Hopefully it is clear that this graph between users and entities is a bipartite one.
 
 Note:
-* By construction there exists no u_i belonging to U s.t. deg(u_i) = 0, where deg(u_i): The number of edges connected to user i.
+* By construction ```there exists no u_i belonging to U s.t. deg(u_i) = 0```
+    * *deg(u_i)*: number of edges connected to *user i*.
 * Such users wouldn't appear in a log record of users visiting entities
-* Similarly there are no such v_i belonging to V s.t. deg(v_i) = 0
+* Similarly ```there are no such v_i belonging to V s.t. deg(v_i) = 0```
 * These facts give us a further condition that this graph is actually a connected bipartite graph
 
 In general **danny** should be used when `O(|E|) << O(|U|*|V|)`
@@ -149,7 +150,8 @@ Here are some important facts to keep in mind about the bipartite graph:
     * |E| <= |U| * |V|
     * When O(|E|) << O(|U|*|V|), deg(u_i) and deg(v_j) are low for most i, j
 
-We also have the added benefit that our bipartite graph is a connected one, which gives us the following two facts:
+We also have the added benefit that our bipartite graph is a **connected** one, which gives us the following two facts:
+
     * |U| <= |E|
     * |V| <= |E|
 
