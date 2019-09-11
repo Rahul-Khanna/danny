@@ -22,11 +22,11 @@ For the purpose of **clarity** I will be referring to:
 
 * **entity_a_id** as **user_id** 
 * **entity_b_id** as **entity_id**
-* the log file as a file describing each user's **entity visitation pattern**
+* the log file is a file describing each user's **entity visitation pattern**
 
-The nearest neighbors per user are then the users who visit the same entities at the same rate (or just the same entities -- both definitions are supported).
+Given this, the nearest neighbors per user are the users who visit the same entities at the same rate (or just the same entities -- both definitions are supported).
 
-As mentioned above, **danny** will use some approximation techniques to find the top-n nearest neighbors per users, however there is an **alternative exact technique** supported by **danny**--in certain conditions the exact technique is more appropriate to use.
+As mentioned above, **danny's** default mode is to use an approximation technique to find the top-n nearest neighbors per user, however there is an alternative **exact** mode supported by **danny**--in certain conditions the exact mode is indeed more appropriate to use.
 
 Both the approximate method and the exact method are based around the concept of **using dictionaries to reduce the space of users to look at when considering who the nearest neighbors of user_i are**. By using both a *user_entity* and *entity_user* dictionary (more on these dictionaries can be found below), the search space can be reduced per user before having to compute dot products and sort users. **danny** still ultimately computes dot products, but does so for far fewer users than the naive nearest neighbors would.
 
@@ -46,7 +46,7 @@ Note:
     * *deg(u_i)*: number of edges connected to *user i*.
 * Such users wouldn't appear in a log record of users visiting entities
 * Similarly ```there are no such v_i belonging to V s.t. deg(v_i) = 0```
-* These facts give us a further condition that this graph is actually a connected bipartite graph
+* These facts give us a further condition that this graph is actually a **connected bipartite graph**
 
 In general **danny** should be used when `O(|E|) << O(|U|*|V|)`
 
@@ -138,7 +138,7 @@ By pre-computing all entities associated with each user (user-entity-dictionary)
 However, like *annoy* finding neighbors and computing the necessary dot products occurs in a parallelized way.
 
 ## Some Theory:
-Using the bipartite graph framework described above we can look into `big O` complexity of **danny**
+Using the bipartite graph framework described above (end of [Quick Summary](#quick-summary) section) we can look into `big O` complexity of **danny**
 
 Here are some important facts to keep in mind about the bipartite graph:
 
@@ -165,7 +165,7 @@ So hows does danny do?
 * Building the matrix: `O(|U|*|V|)`
 
 #### In exact mode, we have the following Average Time complexity:
-* let k = average number of users per user who share a common entity
+* let k = average number of users who share a common entity with a given user
 
 * Pruning the space: `O(|U| * avg_d(u) * avg_d(v)) = O(|U|*(|E|/|U|)*(|E|/|V|)) = O(|E|^2/|V|)`
 
@@ -186,7 +186,7 @@ So when `O(|E|) << O(|U|*|V|)`: (Note: |E| is maxed out at |U|*|V| in a bipartit
     * both pruning and matrix multiplication steps takes less time than O(|U|^2*|V|)
 
 #### In approximate mode, we have the following Average Time complexity:
-* let k = average number of users per user who share a common entity
+* let k = average number of users who share a common entity with a given user
 
 * Pruning the space: 
 ```
